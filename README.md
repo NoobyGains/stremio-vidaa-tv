@@ -119,7 +119,6 @@ The setting is saved to `localStorage` — you only need to pass it once.
 ## Credits
 
 - [Stremio](https://github.com/Stremio) — original Stremio web app, core, and sideload tooling
-- [ananjaser1211](https://github.com/ananjaser1211/stremio-hisense-tvos) — original VIDAA TV build this was forked from
 
 ## Disclaimer
 
