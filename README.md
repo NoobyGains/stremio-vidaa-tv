@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://noobygains.github.io/stremio-vidaa-tv/"><img src="https://img.shields.io/website?label=GitHub%20Pages&logo=github&up_message=online&down_message=offline&url=https%3A%2F%2Fnoobygains.github.io%2Fstremio-vidaa-tv%2F" alt="Pages status" /></a>
   <img src="https://img.shields.io/badge/frontend-Theater%20v1.9.2-blue" alt="Frontend version" />
-  <img src="https://img.shields.io/badge/core-stremio--core--web%20v5%20(0.53.0)-purple" alt="Core version" />
+  <img src="https://img.shields.io/badge/core-stremio--core--web%20v5%20(0.55.0)-purple" alt="Core version" />
   <img src="https://img.shields.io/badge/platform-VIDAA%20OS-green" alt="Platform" />
   <a href="https://github.com/NoobyGains/stremio-vidaa-tv/stargazers"><img src="https://img.shields.io/github/stars/NoobyGains/stremio-vidaa-tv?style=social" alt="GitHub Stars" /></a>
 </p>
@@ -103,7 +103,7 @@ The setting is saved to `localStorage` — you only need to pass it once.
 │  v5 Core Bridge (core.chunk.js)          │
 │  External Worker loader → v5-worker.js   │
 ├──────────────────────────────────────────┤
-│  stremio-core-web v5 WASM (0.53.0)      │
+│  stremio-core-web v5 WASM (0.55.0)      │
 │  stremio_core_web_bg.wasm                │
 ├──────────────────────────────────────────┤
 │  Service Worker (sw.js)                  │
