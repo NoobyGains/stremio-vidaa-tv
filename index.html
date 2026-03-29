@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <link rel="shortcut icon" type="image/ico" href="assets/favicon.ico" />
+    <title>Stremio - Freedom to Stream</title>
+    <script>
+    // Configurable streaming server URL
+    // Usage: ?server=http://192.168.1.50:11470
+    // Saved to localStorage so you only need to pass it once.
+    (function() {
+        var params = new URLSearchParams(window.location.search);
+        var server = params.get('server');
+        if (server) {
+            server = server.replace(/\/+$/, '');
+            localStorage.setItem('stremio_server_url', server);
+        }
+        window.__STREMIO_SERVER_URL__ = localStorage.getItem('stremio_server_url') || 'http://127.0.0.1:11470';
+    })();
+    </script>
+    <script>
+    // VIDAA keyboard fix v5 — intercept programmatic input.value changes
+    // The VIDAA system keyboard sets input.value directly without firing DOM events.
+    // This script: (1) overrides the value setter to fire synthetic events,
+    // (2) polls as fallback, (3) directly updates URL hash as nuclear option.
+    (function() {
+        window.__STREMIO_PATCH_VERSION__ = 5;
+
+        // Layer 1: Override HTMLInputElement.prototype.value setter
+        try {
+            var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+            if (desc && desc.set) {
+                var origSet = desc.set;
+                var origGet = desc.get;
+                var guard = false;
+                Object.defineProperty(HTMLInputElement.prototype, 'value', {
+                    get: origGet,
+                    set: function(v) {
+                        var old = origGet.call(this);
+                        origSet.call(this, v);
+                        if (v !== old && !guard) {
+                            guard = true;
+                            try {
+                                this.dispatchEvent(new Event('input', { bubbles: true }));
+                            } catch(e) {}
+                            guard = false;
+                        }
+                    },
+                    configurable: true
+                });
+            }
+        } catch(e) {}
+
+        // Layer 2: Polling fallback (250ms — balanced for TV CPU)
+        var _prev = '';
+        setInterval(function() {
+            try {
+                var hash = window.location.hash || '';
+                if (hash.indexOf('#/search') !== 0) { _prev = ''; return; }
+                var el = document.querySelector('input[type="text"]')
+                      || document.querySelector('input[placeholder]')
+                      || document.querySelector('input');
+                if (!el) return;
+                var v = el.value || '';
+                if (v === _prev) return;
+                _prev = v;
+
+                try {
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                } catch(e) {}
+
+                // Layer 3: Nuclear option — directly update URL hash
+                if (v.length > 0) {
+                    var encoded = encodeURIComponent(v);
+                    if (hash.indexOf('query=' + encoded) === -1) {
+                        window.location.hash = '#/search?query=' + encoded;
+                    }
+                }
+            } catch(e) {}
+        }, 250);
+    })();
+    </script>
+    <script defer="defer" src="runtime.js?v=6"></script>
+    <script defer="defer" src="main.js?v=6"></script>
+    <script defer="defer" src="service.js?v=6"></script>
+    <script defer="defer" src="webOSTV.js?v=6"></script>
+</head>
+
+<body><noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <div id="patch-version" style="position:fixed;bottom:4px;right:8px;color:rgba(255,255,255,0.3);font-size:10px;z-index:99999;pointer-events:none;">v6</div>
+</body>
+<script>
+    // Register service worker for offline caching
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js').catch(function() {});
+    }
+</script>
+<script>
+    // Detect VIDAA TV with 720p viewport
+    setTimeout(function() {
+        window.screen720p = false;
+        try {
+            if (Hisense_GetFirmWareVersion() && window.innerHeight === 720) {
+                window.screen720p = true;
+            }
+        } catch (e) {}
+        if (window.screen720p) {
+            document.body.style.zoom = '65%';
+        }
+    });
+</script>
+
+</html>

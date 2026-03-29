@@ -1,0 +1,6 @@
+<svg preserveAspectRatio="none" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="5" height="5" fill="grey" />
+    <rect x="5" y="5" width="5" height="5" fill="grey" />
+    <rect x="5" y="0" width="5" height="5" fill="white" />
+    <rect x="0" y="5" width="5" height="5" fill="white" />
+</svg>
