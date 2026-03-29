@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/frontend-Theater%20v1.9.2-blue" alt="Frontend version" />
   <img src="https://img.shields.io/badge/core-stremio--core--web%20v5%20(0.53.0)-purple" alt="Core version" />
   <img src="https://img.shields.io/badge/platform-VIDAA%20OS-green" alt="Platform" />
+  <a href="https://github.com/NoobyGains/stremio-vidaa-tv/stargazers"><img src="https://img.shields.io/github/stars/NoobyGains/stremio-vidaa-tv?style=social" alt="GitHub Stars" /></a>
 </p>
 
 ---
@@ -119,6 +120,12 @@ The setting is saved to `localStorage` — you only need to pass it once.
 ## Credits
 
 - [Stremio](https://github.com/Stremio) — original Stremio web app, core, and sideload tooling
+
+## Support
+
+If this project helped you get Stremio working on your TV, consider starring the repo or buying me a coffee.
+
+<a href="https://buymeacoffee.com/noobygains"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="200" /></a>
 
 ## Disclaimer
 
