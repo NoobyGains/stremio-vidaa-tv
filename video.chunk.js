@@ -413,6 +413,7 @@
                                                 url: r
                                             }
                                         };
+                                        if (!n.streamingServerURL || n.streamingServerURL === "http://127.0.0.1:11470" && !window.__SERVER_HEALTH__ || (window.__SERVER_HEALTH__ && window.__SERVER_HEALTH__.status !== "online")) { console.log("[stream] No server available, attempting direct playback for:", r.substring(0, 80)); return { mediaURL: r, infoHash: s, fileIdx: o, stream: { url: r } }; }
                                         var t = a(),
                                             l = new URLSearchParams([
                                                 ["mediaURL", r]
