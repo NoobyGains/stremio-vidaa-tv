@@ -427,6 +427,22 @@
                 + '<div>Current: ' + Math.round(video.currentTime || 0) + 's</div>'
                 + '<div>Paused: ' + video.paused + '</div>'
                 + '<div>DV P7: ' + (window.__DV_PROFILE7_DETECTED__ || 'No') + '</div>';
+            if (window.__VIDAA_CAPS__) {
+                info.innerHTML += '<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.15);padding-top:8px;">'
+                    + '<div style="font-weight:700;margin-bottom:4px;">VIDAA Device</div>'
+                    + '<div>Model: ' + (window.__VIDAA_CAPS__.model || '?') + '</div>'
+                    + '<div>Chipset: ' + (window.__VIDAA_CAPS__.chipset || '?') + '</div>'
+                    + '<div>HDR: ' + JSON.stringify(window.__VIDAA_CAPS__.hdrInfo || {}) + '</div>'
+                    + '<div>Atmos: ' + (window.__VIDAA_CAPS__.dolbyAtmos || '?') + '</div>'
+                    + '</div>';
+            }
+            if (window.__VIDAA_STATE__ && Object.keys(window.__VIDAA_STATE__).length > 0) {
+                info.innerHTML += '<div style="margin-top:4px;">'
+                    + '<div>DV: ' + (window.__VIDAA_STATE__.dolbyVision || 'N/A') + '</div>'
+                    + '<div>HDR: ' + (window.__VIDAA_STATE__.hdr || 'N/A') + '</div>'
+                    + '<div>Codec: ' + (window.__VIDAA_STATE__.videoCodec || 'N/A') + '</div>'
+                    + '</div>';
+            }
             document.body.appendChild(info);
             setTimeout(function() { if (info) info.remove(); }, 10000);
         }
@@ -502,6 +518,123 @@
             console.warn('[memory] High usage: ' + Math.round(used/1048576) + 'MB / ' + Math.round(limit/1048576) + 'MB (' + pct + '%)');
         }
     }, 30000);
+})();
+</script>
+<script>
+// VIDAA API Integration — register trusted domain + expose device capabilities
+(function() {
+    // Only run on VIDAA devices
+    try { Hisense_GetOSVersion(); } catch(e) { return; }
+
+    window.__VIDAA_DEVICE__ = true;
+
+    // Register GitHub Pages as trusted domain (enables privileged APIs on future loads)
+    try {
+        var domains = Hisense_GetInsecureDomain() || [];
+        var ghDomain = 'noobygains.github.io';
+        var found = false;
+        for (var i = 0; i < domains.length; i++) {
+            if (domains[i] === ghDomain) { found = true; break; }
+        }
+        if (!found) {
+            var result = Hisense_AddInsecureDomain(ghDomain);
+            console.log('[vidaa] Registered trusted domain:', ghDomain, result);
+        }
+    } catch(e) {
+        console.log('[vidaa] AddInsecureDomain not available:', e.message);
+    }
+
+    // Collect device capabilities
+    try {
+        window.__VIDAA_CAPS__ = {};
+        try { window.__VIDAA_CAPS__.hdrInfo = Hisense_GetSupportForHDRInfo(); } catch(e) {}
+        try { window.__VIDAA_CAPS__.pictureInfo = Hisense_GetPictureInfo(); } catch(e) {}
+        try { window.__VIDAA_CAPS__.dolbyAtmos = Hisense_GetSupportForDolbyAtmos(); } catch(e) {}
+        try { window.__VIDAA_CAPS__.chipset = Hisense_GetChipSetName(); } catch(e) {}
+        try { window.__VIDAA_CAPS__.panelRes = Hisense_GetPanelResolution(); } catch(e) {}
+        try { window.__VIDAA_CAPS__.drmInfo = Hisense_GetDrmInfo(); } catch(e) {}
+        try { window.__VIDAA_CAPS__.model = Hisense_GetModelName(); } catch(e) {}
+        try { window.__VIDAA_CAPS__.firmware = Hisense_GetFirmWareVersion(); } catch(e) {}
+        try { window.__VIDAA_CAPS__.osVersion = Hisense_GetOSVersion(); } catch(e) {}
+        console.log('[vidaa] Device caps:', JSON.stringify(window.__VIDAA_CAPS__));
+    } catch(e) {}
+
+    // Register observers for real-time video state
+    try {
+        window.__VIDAA_STATE__ = {};
+        var keys = ['dolbyVision', 'hdr', 'videoCodec', 'audioCodec', 'playerState', 'mediaState', 'resolution'];
+        for (var j = 0; j < keys.length; j++) {
+            (function(key) {
+                try {
+                    Hisense_RegisterObserver(key, function(val) {
+                        window.__VIDAA_STATE__[key] = val;
+                        console.log('[vidaa] Observer:', key, '=', val);
+                    });
+                } catch(e) {}
+            })(keys[j]);
+        }
+    } catch(e) {}
+})();
+</script>
+<script>
+// Install to Launcher — first-run prompt for VIDAA devices
+(function() {
+    if (!window.__VIDAA_DEVICE__) return;
+    if (localStorage.getItem('stremio_installed_to_launcher')) return;
+
+    // Check if install API is available
+    var canInstall = false;
+    try { canInstall = typeof Hisense_installApp === 'function'; } catch(e) {}
+    if (!canInstall) return;
+
+    // Show install banner after app loads (delay to let splash screen clear)
+    setTimeout(function() {
+        var banner = document.createElement('div');
+        banner.id = 'install-banner';
+        banner.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(123,91,245,0.95);color:white;padding:14px 28px;border-radius:12px;z-index:99999;font-family:PlusJakartaSans,sans-serif;font-size:1rem;display:flex;align-items:center;gap:16px;backdrop-filter:blur(8px);box-shadow:0 4px 20px rgba(0,0,0,0.4);';
+
+        var text = document.createElement('span');
+        text.textContent = 'Add Stremio to your TV launcher?';
+        banner.appendChild(text);
+
+        var btn = document.createElement('button');
+        btn.textContent = 'Install';
+        btn.style.cssText = 'background:white;color:#7b5bf5;border:none;padding:8px 20px;border-radius:8px;font-weight:700;font-size:0.95rem;cursor:pointer;font-family:inherit;';
+        btn.setAttribute('tabindex', '1');
+        btn.onfocus = function() { this.style.outline = '3px solid white'; };
+        btn.onblur = function() { this.style.outline = 'none'; };
+        btn.onclick = function() {
+            var appUrl = 'https://noobygains.github.io/stremio-vidaa-tv/';
+            var iconUrl = appUrl + 'icon.png';
+            try {
+                Hisense_installApp('stremio-vidaa', 'Stremio', iconUrl, iconUrl, iconUrl, appUrl, 'store', function(status) {
+                    if (status === 0) {
+                        localStorage.setItem('stremio_installed_to_launcher', '1');
+                        text.textContent = 'Installed! Restart your TV to see Stremio in the launcher.';
+                        btn.style.display = 'none';
+                        setTimeout(function() { banner.remove(); }, 8000);
+                    } else {
+                        text.textContent = 'Install failed (code ' + status + '). Try again.';
+                    }
+                });
+            } catch(e) {
+                text.textContent = 'Install not available from this domain.';
+                setTimeout(function() { banner.remove(); }, 5000);
+            }
+        };
+        banner.appendChild(btn);
+
+        var dismiss = document.createElement('button');
+        dismiss.textContent = '\u00D7';
+        dismiss.style.cssText = 'background:none;color:rgba(255,255,255,0.6);border:none;font-size:1.4rem;cursor:pointer;padding:0 4px;';
+        dismiss.onclick = function() { banner.remove(); };
+        banner.appendChild(dismiss);
+
+        document.body.appendChild(banner);
+
+        // Auto-dismiss after 15 seconds
+        setTimeout(function() { if (banner.parentNode) banner.remove(); }, 15000);
+    }, 5000);
 })();
 </script>
 <script>

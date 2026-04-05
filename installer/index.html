@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<title>Stremio VIDAA Installer</title>
+<style>
+  @font-face {
+    font-family: 'PlusJakartaSans';
+    src: url('https://noobygains.github.io/stremio-vidaa-tv/PlusJakartaSans.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    background: #0a0a14;
+    color: #ffffff;
+    font-family: 'PlusJakartaSans', 'Segoe UI', Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    overflow: hidden;
+  }
+
+  .container {
+    text-align: center;
+    max-width: 800px;
+    width: 100%;
+  }
+
+  .logo {
+    width: 140px;
+    height: auto;
+    margin-bottom: 20px;
+  }
+
+  h1 {
+    font-size: 48px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #ffffff;
+  }
+
+  .subtitle {
+    font-size: 22px;
+    color: #8888aa;
+    margin-bottom: 48px;
+  }
+
+  .status-area {
+    min-height: 60px;
+    margin-bottom: 36px;
+  }
+
+  .status-message {
+    font-size: 24px;
+    color: #ccccdd;
+    transition: opacity 0.3s ease;
+  }
+
+  .status-message.success {
+    color: #4cdf7f;
+  }
+
+  .status-message.error {
+    color: #ff5f6f;
+  }
+
+  .status-message.working {
+    color: #7b5bf5;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(123, 91, 245, 0.3);
+    border-top-color: #7b5bf5;
+    border-radius: 50%;
+    margin-right: 10px;
+    vertical-align: middle;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .buttons {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-block;
+    padding: 20px 56px;
+    font-size: 28px;
+    font-weight: 600;
+    font-family: inherit;
+    border: 3px solid transparent;
+    border-radius: 16px;
+    cursor: pointer;
+    outline: none;
+    transition: background 0.2s, border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .btn:focus {
+    border-color: #ffffff;
+    box-shadow: 0 0 0 4px rgba(123, 91, 245, 0.5);
+    transform: scale(1.04);
+  }
+
+  .btn-install {
+    background: #7b5bf5;
+    color: #ffffff;
+  }
+
+  .btn-install:hover,
+  .btn-install:focus {
+    background: #6a4ae0;
+  }
+
+  .btn-install:active {
+    background: #5939c0;
+    transform: scale(0.97);
+  }
+
+  .btn-install:disabled {
+    background: #3d3060;
+    color: #777799;
+    cursor: default;
+    transform: none;
+    box-shadow: none;
+    border-color: transparent;
+  }
+
+  .btn-uninstall {
+    background: transparent;
+    color: #8888aa;
+    border-color: #333355;
+  }
+
+  .btn-uninstall:hover,
+  .btn-uninstall:focus {
+    color: #ff5f6f;
+    border-color: #ff5f6f;
+    background: rgba(255, 95, 111, 0.08);
+  }
+
+  .btn-uninstall:active {
+    background: rgba(255, 95, 111, 0.15);
+    transform: scale(0.97);
+  }
+
+  .btn-uninstall:disabled {
+    color: #444466;
+    border-color: #222244;
+    cursor: default;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .footer {
+    position: fixed;
+    bottom: 24px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 16px;
+    color: #555577;
+  }
+
+  .not-vidaa {
+    display: none;
+    margin-top: 32px;
+    padding: 20px 32px;
+    background: rgba(255, 95, 111, 0.1);
+    border: 1px solid rgba(255, 95, 111, 0.3);
+    border-radius: 12px;
+    font-size: 20px;
+    color: #ff8f9f;
+  }
+
+  .progress-bar-wrap {
+    width: 300px;
+    height: 6px;
+    background: #1a1a2e;
+    border-radius: 3px;
+    margin: 16px auto 0;
+    overflow: hidden;
+    display: none;
+  }
+
+  .progress-bar {
+    height: 100%;
+    width: 0%;
+    background: #7b5bf5;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <img class="logo" src="https://noobygains.github.io/stremio-vidaa-tv/logo.png" alt="Stremio">
+  <h1>Stremio for VIDAA</h1>
+  <p class="subtitle">One-click installer</p>
+
+  <div class="status-area">
+    <p id="statusMsg" class="status-message"></p>
+    <div id="progressWrap" class="progress-bar-wrap">
+      <div id="progressBar" class="progress-bar"></div>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button id="btnInstall" class="btn btn-install" tabindex="1">Install Stremio</button>
+    <button id="btnUninstall" class="btn btn-uninstall" tabindex="2">Uninstall</button>
+  </div>
+
+  <div id="notVidaa" class="not-vidaa">
+    Hisense VIDAA APIs not detected. This installer must run on a VIDAA TV via DNS spoofing.
+  </div>
+</div>
+
+<div class="footer">
+  github.com/NoobyGains/stremio-vidaa-tv
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  var APP_ID      = "stremio-vidaa";
+  var APP_NAME    = "Stremio";
+  var ICON_URL    = "https://noobygains.github.io/stremio-vidaa-tv/icon.png";
+  var APP_URL     = "https://noobygains.github.io/stremio-vidaa-tv/";
+  var STORE_TYPE  = "store";
+  var GH_DOMAIN   = "noobygains.github.io";
+
+  var statusMsg   = document.getElementById("statusMsg");
+  var progressWrap = document.getElementById("progressWrap");
+  var progressBar = document.getElementById("progressBar");
+  var btnInstall  = document.getElementById("btnInstall");
+  var btnUninstall = document.getElementById("btnUninstall");
+  var notVidaa    = document.getElementById("notVidaa");
+
+  var isVidaa = (typeof Hisense_installApp === "function");
+
+  function setStatus(text, type) {
+    var prefix = "";
+    if (type === "working") {
+      prefix = '<span class="spinner"></span>';
+    }
+    statusMsg.innerHTML = prefix + text;
+    statusMsg.className = "status-message" + (type ? " " + type : "");
+  }
+
+  function showProgress(pct) {
+    progressWrap.style.display = "block";
+    progressBar.style.width = pct + "%";
+  }
+
+  function hideProgress() {
+    progressWrap.style.display = "none";
+    progressBar.style.width = "0%";
+  }
+
+  function disableButtons(disabled) {
+    btnInstall.disabled = disabled;
+    btnUninstall.disabled = disabled;
+  }
+
+  /* ---------- domain registration ---------- */
+  function registerDomain(callback) {
+    setStatus("Registering trusted domain...", "working");
+    showProgress(20);
+
+    if (typeof Hisense_AddInsecureDomain !== "function") {
+      setStatus("Hisense_AddInsecureDomain not available", "error");
+      hideProgress();
+      callback(false);
+      return;
+    }
+
+    try {
+      Hisense_AddInsecureDomain(GH_DOMAIN);
+      showProgress(40);
+      setTimeout(function() {
+        callback(true);
+      }, 500);
+    } catch (e) {
+      setStatus("Domain registration failed: " + e.message, "error");
+      hideProgress();
+      callback(false);
+    }
+  }
+
+  /* ---------- install ---------- */
+  function doInstall() {
+    if (!isVidaa) return;
+    disableButtons(true);
+
+    registerDomain(function(ok) {
+      if (!ok) {
+        disableButtons(false);
+        return;
+      }
+
+      setStatus("Installing Stremio...", "working");
+      showProgress(60);
+
+      try {
+        Hisense_installApp(
+          APP_ID,
+          APP_NAME,
+          ICON_URL,
+          ICON_URL,
+          ICON_URL,
+          APP_URL,
+          STORE_TYPE,
+          function(result) {
+            showProgress(100);
+            if (result === 0) {
+              setStatus("Stremio installed successfully! Restart your TV to see it.", "success");
+            } else {
+              setStatus("Install callback returned code: " + result, "error");
+            }
+            disableButtons(false);
+          }
+        );
+
+        /* The install function may return synchronously before callback fires */
+        showProgress(80);
+      } catch (e) {
+        setStatus("Installation failed: " + e.message, "error");
+        hideProgress();
+        disableButtons(false);
+      }
+    });
+  }
+
+  /* ---------- uninstall ---------- */
+  function doUninstall() {
+    if (!isVidaa) return;
+
+    if (typeof Hisense_uninstallApp !== "function") {
+      setStatus("Hisense_uninstallApp not available on this firmware", "error");
+      return;
+    }
+
+    disableButtons(true);
+    setStatus("Uninstalling Stremio...", "working");
+
+    try {
+      Hisense_uninstallApp(APP_ID, function(result) {
+        if (result === 0) {
+          setStatus("Stremio has been uninstalled.", "success");
+        } else {
+          setStatus("Uninstall callback returned code: " + result, "error");
+        }
+        disableButtons(false);
+      });
+    } catch (e) {
+      setStatus("Uninstall failed: " + e.message, "error");
+      disableButtons(false);
+    }
+  }
+
+  /* ---------- d-pad navigation ---------- */
+  function handleKeydown(e) {
+    var code = e.keyCode || e.which;
+    var focused = document.activeElement;
+
+    /* Enter / OK button */
+    if (code === 13) {
+      if (focused && focused.click) {
+        focused.click();
+      }
+      return;
+    }
+
+    /* Left / Right arrow */
+    if (code === 37 || code === 39) {
+      if (focused === btnInstall) {
+        btnUninstall.focus();
+      } else {
+        btnInstall.focus();
+      }
+      e.preventDefault();
+    }
+  }
+
+  /* ---------- init ---------- */
+  function init() {
+    btnInstall.addEventListener("click", doInstall);
+    btnUninstall.addEventListener("click", doUninstall);
+    document.addEventListener("keydown", handleKeydown);
+
+    if (!isVidaa) {
+      notVidaa.style.display = "block";
+      setStatus("Waiting for VIDAA environment...", "");
+    } else {
+      setStatus("Ready to install", "");
+      /* Auto-register domain on load */
+      try {
+        Hisense_AddInsecureDomain(GH_DOMAIN);
+      } catch (e) { /* silent */ }
+    }
+
+    btnInstall.focus();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+</script>
+
+</body>
+</html>

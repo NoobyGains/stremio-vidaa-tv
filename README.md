@@ -45,19 +45,37 @@ Every chunk was hand-merged: the original 58 UI/translation/route chunks are pre
 | **Server URL** | `?server=` only affected heartbeat, not actual stream routing | URL now syncs directly to the WASM core on startup and auto-reloads when changed in Settings |
 | **Error messages** | Generic "video not supported" for all codec failures | Codec-specific, actionable messages that tell the user what to do |
 
-## Quick Start
+## Installation
 
-### Option A — GitHub Pages (easiest)
+### Method 1: One-Click Installer (recommended)
 
-The app is live at:
+The easiest way to install. Requires a PC on the same network as your TV.
+
+1. Download and run the installer:
+   ```bash
+   git clone https://github.com/NoobyGains/stremio-vidaa-tv.git
+   cd stremio-vidaa-tv/installer
+   python server.py
+   ```
+2. On your **TV**: go to Settings > Network > DNS and set it to the IP shown by the script
+3. On your **TV**: open the browser and go to `https://vidaahub.com`
+4. Press **Install Stremio**
+5. Revert DNS to automatic and restart your TV
+6. Stremio appears in your app launcher permanently
+
+The installer also registers GitHub Pages as a trusted domain, so future updates work automatically.
+
+### Method 2: Direct URL (if already sideloaded)
+
+If you've previously sideloaded any app via DNS spoofing:
 
 ```
 https://noobygains.github.io/stremio-vidaa-tv/
 ```
 
-Point your [stremio-hisense-install](https://github.com/Stremio/stremio-hisense-install) sideload script at this URL and you're done.
+The app will prompt you to "Install to Launcher" on first run.
 
-### Option B — Self-hosted with Docker
+### Method 3: Self-hosted with Docker
 
 ```dockerfile
 FROM python:3.11-slim
@@ -65,16 +83,6 @@ WORKDIR /app
 COPY . .
 EXPOSE 8000
 CMD ["python", "-m", "http.server", "8000"]
-```
-
-```yaml
-# docker-compose.yml
-version: "3.8"
-services:
-  stremio-tvos:
-    build: .
-    ports:
-      - "8000:8000"
 ```
 
 ```bash
@@ -131,6 +139,29 @@ The setting is saved to `localStorage` — you only need to pass it once.
 | **App shows old version after update** | The service worker may be serving a cached copy. Go to Settings → Clear Data, or add `?v=new` to the URL to force a refresh. |
 | **720p UI is clipped or too large** | The app auto-detects 720p VIDAA devices and applies a 65% zoom correction. If this isn't working, your TV may not be reporting the viewport correctly. |
 
+## VIDAA API Documentation
+
+This project includes the most comprehensive reverse-engineered documentation of VIDAA OS browser APIs, generated from a live scan of a Hisense PX1HE (100L5H).
+
+See [VIDAA-API-SCAN-RESULTS.md](VIDAA-API-SCAN-RESULTS.md) for the full report including:
+
+- 110+ discovered Hisense/VIDAA JavaScript APIs
+- Complete codec support matrix (canPlayType + MSE)
+- HDR/Dolby Vision hardware capabilities
+- DRM support (Widevine, PlayReady, ClearKey)
+- App installation APIs (`Hisense_installApp`, `Appinfo.json`)
+- Observer system for real-time video/audio state
+- `omi_platform` native messaging interface
+- WebSDK parameter system (57 readable system parameters)
+
+### Key Finding: Dolby Vision Profile 7
+
+Our scan revealed that `canPlayType("video/mp4; codecs=dvhe.07.06")` returns `"probably"` on the PX1HE, suggesting hardware DV P7 decode IS accessible from the browser layer. The black screen users experience with DV P7 content may be a stream packaging issue rather than a fundamental codec block. Research is ongoing.
+
+### Community Contribution
+
+If you have a different Hisense/VIDAA TV model, you can run the API scan yourself using [vidaa-edge](https://github.com/weinzii/vidaa-edge) and share the results. Different models may expose different APIs and codec support.
+
 ## How It Works
 
 ```
@@ -141,7 +172,8 @@ The setting is saved to `localStorage` — you only need to pass it once.
 │  addons, login, details, video, etc.     │
 ├──────────────────────────────────────────┤
 │  v7 Patch Layer (index.html)             │
-│  Server sync, DV detection, QoL, etc.    │
+│  Server sync, DV detection, VIDAA API    │
+│  integration, install-to-launcher, QoL   │
 ├──────────────────────────────────────────┤
 │  v5 Core Bridge (core.chunk.js)          │
 │  External Worker loader → v5-worker.js   │
@@ -151,18 +183,31 @@ The setting is saved to `localStorage` — you only need to pass it once.
 ├──────────────────────────────────────────┤
 │  Service Worker (sw.js)                  │
 │  Caches app shell for instant TV boot    │
+├──────────────────────────────────────────┤
+│  One-Click Installer (installer/)        │
+│  DNS spoof + HTTPS server + auto-install │
 └──────────────────────────────────────────┘
 ```
 
 ## Requirements
 
-- **Hisense / Toshiba TV** running **VIDAA OS**
-- The [stremio-hisense-install](https://github.com/Stremio/stremio-hisense-install) sideload script
-- A [Stremio streaming server](https://github.com/Stremio/stremio-server) running on your network (for transcoding)
+- **Hisense / Toshiba TV** running **VIDAA OS** (required)
+- A **Stremio account** at [stremio.com](https://www.stremio.com/) (required, free)
+- **Real-Debrid** or similar debrid service (recommended for best streaming experience)
+- A Stremio streaming server (optional, only needed for transcoding HEVC/4K/DV content without debrid)
+
+> Most users with Real-Debrid do not need a streaming server. The v5 WASM core handles everything in-browser.
 
 ## Credits
 
 - [Stremio](https://github.com/Stremio) — original Stremio web app, core, and sideload tooling
+- [weinzii/vidaa-edge](https://github.com/weinzii/vidaa-edge) — VIDAA development toolkit used for API reverse engineering
+- [Stremio/stremio-hisense-install](https://github.com/Stremio/stremio-hisense-install) — original sideload script
+
+## Community
+
+- [r/Stremio](https://www.reddit.com/r/Stremio/) — Stremio community
+- [r/Hisense](https://www.reddit.com/r/Hisense/) — Hisense TV community
 
 ## Support
 
