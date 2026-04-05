@@ -285,10 +285,32 @@
 
         var actionsDiv = overlay.querySelector('#dv-actions');
 
+        // Native Player button (VIDAA only)
+        var hasNativePlayer = false;
+        try { hasNativePlayer = typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) {}
+
+        if (hasNativePlayer) {
+            var nativeBtn = document.createElement('button');
+            nativeBtn.textContent = 'Open in Native Player';
+            nativeBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:#7b5bf5;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
+            nativeBtn.setAttribute('tabindex', '1');
+            nativeBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
+            nativeBtn.onblur = function() { this.style.outline = 'none'; };
+            nativeBtn.onclick = function() {
+                var video = document.querySelector('video');
+                var streamUrl = video ? video.currentSrc || video.src : null;
+                if (streamUrl) {
+                    window.__launchNativePlayer(streamUrl);
+                    overlay.remove();
+                }
+            };
+            actionsDiv.appendChild(nativeBtn);
+        }
+
         var transBtn = document.createElement('button');
         transBtn.textContent = 'Force Transcode';
-        transBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:#7b5bf5;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
-        transBtn.setAttribute('tabindex', '1');
+        transBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:' + (hasNativePlayer ? 'rgba(255,255,255,0.1)' : '#7b5bf5') + ';color:white;border:' + (hasNativePlayer ? '1px solid rgba(255,255,255,0.25)' : 'none') + ';border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
+        transBtn.setAttribute('tabindex', hasNativePlayer ? '2' : '1');
         transBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
         transBtn.onblur = function() { this.style.outline = 'none'; };
         transBtn.onclick = function() {
@@ -300,7 +322,7 @@
         var skipBtn = document.createElement('button');
         skipBtn.textContent = 'Try Another Source';
         skipBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
-        skipBtn.setAttribute('tabindex', '2');
+        skipBtn.setAttribute('tabindex', hasNativePlayer ? '3' : '2');
         skipBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
         skipBtn.onblur = function() { this.style.outline = 'none'; };
         skipBtn.onclick = function() {
@@ -312,7 +334,7 @@
         var dismissBtn = document.createElement('button');
         dismissBtn.textContent = 'Dismiss';
         dismissBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.1);border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
-        dismissBtn.setAttribute('tabindex', '3');
+        dismissBtn.setAttribute('tabindex', hasNativePlayer ? '4' : '3');
         dismissBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
         dismissBtn.onblur = function() { this.style.outline = 'none'; };
         dismissBtn.onclick = function() { overlay.remove(); };
@@ -514,6 +536,60 @@
             }
             document.body.appendChild(info);
             setTimeout(function() { if (info) info.remove(); }, 10000);
+        }
+    });
+})();
+</script>
+<script>
+// Native player handoff — hand stream URL to VIDAA system player
+// The native player has full hardware DV decode with metadata intact
+(function() {
+    var hasNative = false;
+    try { hasNative = typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) {}
+    if (!hasNative) return;
+
+    window.__launchNativePlayer = function(url) {
+        if (!url) {
+            var video = document.querySelector('video');
+            url = video ? video.currentSrc || video.src : null;
+        }
+        if (!url) { console.log('[native] No stream URL found'); return false; }
+
+        console.log('[native] Launching native player with:', url.substring(0, 100));
+
+        // Try multiple message types — different VIDAA versions respond to different ones
+        var messages = [
+            {type: 'launchNativePlayer', url: url, title: 'Stremio', mimeType: 'video/mp4'},
+            {type: 'openMediaPlayer', url: url, title: 'Stremio'},
+            {type: 'playVideo', url: url, mimeType: 'video/mp4', title: 'Stremio'}
+        ];
+
+        for (var i = 0; i < messages.length; i++) {
+            try {
+                omi_platform.sendPlatformMessage(JSON.stringify(messages[i]));
+                console.log('[native] Sent:', messages[i].type);
+            } catch(e) {
+                console.log('[native] Failed:', messages[i].type, e.message);
+            }
+        }
+        return true;
+    };
+
+    // Yellow button (405) — launch native player with current stream
+    document.addEventListener('keydown', function(e) {
+        if (e.keyCode === 405) {
+            var hash = window.location.hash || '';
+            if (hash.indexOf('#/player/') === 0) {
+                var launched = window.__launchNativePlayer();
+                if (launched) {
+                    // Show brief notification
+                    var toast = document.createElement('div');
+                    toast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.9);color:white;padding:20px 40px;border-radius:12px;font-size:1.2rem;font-family:PlusJakartaSans,sans-serif;z-index:100000;pointer-events:none;';
+                    toast.textContent = 'Opening in native player...';
+                    document.body.appendChild(toast);
+                    setTimeout(function() { toast.remove(); }, 3000);
+                }
+            }
         }
     });
 })();

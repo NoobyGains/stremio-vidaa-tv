@@ -144,6 +144,7 @@ DRM: Widevine, PlayReady, and ClearKey are all supported.
 |---|---|
 | **Red** | Toggle resolution indicator |
 | **Green** | Show/hide server health overlay (status, latency, version) |
+| **Yellow** | Open current stream in native VIDAA player (full hardware DV/HDR decode) |
 | **Blue** | Force transcode current stream |
 | **Info / Display** | Show stream details (resolution, buffer, codec, VIDAA device info) |
 
