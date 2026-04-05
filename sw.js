@@ -1,4 +1,4 @@
-var CACHE_NAME = 'stremio-vidaa-v6';
+var CACHE_NAME = 'stremio-vidaa-v7';
 var ASSETS = [
   './',
   './index.html',
@@ -48,20 +48,25 @@ self.addEventListener('activate', function(e) {
 });
 
 self.addEventListener('fetch', function(e) {
-  var url = new URL(e.request.url);
-  // Only cache same-origin app shell requests
-  if (url.origin !== self.location.origin) return;
-  // Skip non-GET
-  if (e.request.method !== 'GET') return;
+  var req = e.request;
+  if (req.method !== 'GET') return;
+  if (req.url.indexOf(self.location.origin) !== 0) return;
+
+  // Only construct normalized request when query string is present
+  var normalizedRequest = req;
+  if (req.url.indexOf('?') !== -1) {
+    var url = new URL(req.url);
+    url.search = '';
+    normalizedRequest = new Request(url.toString());
+  }
 
   e.respondWith(
-    caches.match(e.request).then(function(cached) {
-      // Serve from cache, update in background (stale-while-revalidate)
-      var fetchPromise = fetch(e.request).then(function(response) {
+    caches.match(normalizedRequest).then(function(cached) {
+      var fetchPromise = fetch(req).then(function(response) {
         if (response && response.status === 200) {
           var clone = response.clone();
           caches.open(CACHE_NAME).then(function(cache) {
-            cache.put(e.request, clone);
+            cache.put(normalizedRequest, clone);
           });
         }
         return response;
@@ -71,4 +76,8 @@ self.addEventListener('fetch', function(e) {
       return cached || fetchPromise;
     })
   );
+});
+
+self.addEventListener('message', function(e) {
+  if (e.data === 'skipWaiting') self.skipWaiting();
 });

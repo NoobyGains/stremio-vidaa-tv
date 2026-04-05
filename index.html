@@ -87,21 +87,422 @@
         }, 250);
     })();
     </script>
-    <script defer="defer" src="runtime.js?v=6"></script>
-    <script defer="defer" src="main.js?v=6"></script>
-    <script defer="defer" src="service.js?v=6"></script>
-    <script defer="defer" src="webOSTV.js?v=6"></script>
+    <script defer="defer" src="runtime.js?v=7"></script>
+    <script defer="defer" src="main.js?v=7"></script>
+    <script defer="defer" src="service.js?v=7"></script>
+    <script defer="defer" src="webOSTV.js?v=7"></script>
 </head>
 
 <body><noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-    <div id="patch-version" style="position:fixed;bottom:4px;right:8px;color:rgba(255,255,255,0.3);font-size:10px;z-index:99999;pointer-events:none;">v6</div>
+    <div id="splash" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#0a0a14;z-index:100001;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <img src="logo.png" width="100" style="margin-bottom:1.5rem;opacity:0.9;">
+        <div style="color:rgba(255,255,255,0.5);font-size:1rem;font-family:PlusJakartaSans,sans-serif;">Loading...</div>
+        <div style="margin-top:1rem;width:120px;height:3px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;">
+            <div id="splash-bar" style="width:0%;height:100%;background:#7b5bf5;border-radius:2px;transition:width 0.3s;"></div>
+        </div>
+    </div>
+    <div id="patch-version" style="position:fixed;bottom:4px;right:8px;color:rgba(255,255,255,0.3);font-size:10px;z-index:99999;pointer-events:none;">v7</div>
 </body>
 <script>
     // Register service worker for offline caching
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js').catch(function() {});
     }
+</script>
+<script>
+// Server URL sync — push ?server= URL into WASM core
+(function() {
+    var serverUrl = window.__STREMIO_SERVER_URL__;
+    if (!serverUrl || serverUrl === 'http://127.0.0.1:11470') return;
+
+    var attempts = 0;
+    var interval = setInterval(function() {
+        if (++attempts > 60) { clearInterval(interval); return; }
+        if (!window.core) return;
+        clearInterval(interval);
+
+        window.core.getState('ctx').then(function(ctxState) {
+            if (!ctxState || !ctxState.profile || !ctxState.profile.settings) return;
+            var currentSettings = ctxState.profile.settings;
+            if (currentSettings.streamingServerUrl === serverUrl) {
+                console.log('[server-sync] URL already correct');
+                return;
+            }
+            console.log('[server-sync] Syncing URL to WASM core:', serverUrl);
+            var newSettings = {};
+            for (var k in currentSettings) newSettings[k] = currentSettings[k];
+            newSettings.streamingServerUrl = serverUrl;
+            window.core.dispatch({ action: 'Ctx', args: { action: 'UpdateSettings', args: newSettings } }, 'ctx').then(function() {
+                console.log('[server-sync] Settings updated, reloading streaming server');
+                return window.core.dispatch({ action: 'StreamingServer', args: { action: 'Reload' } }, 'streaming_server');
+            }).then(function() {
+                console.log('[server-sync] Streaming server reloaded successfully');
+            }).catch(function(e) {
+                console.error('[server-sync] Error:', e);
+            });
+        }).catch(function(e) {
+            console.error('[server-sync] Failed to get ctx state:', e);
+        });
+    }, 500);
+})();
+</script>
+<script>
+// Auto-reload streaming server when URL changes in Settings UI
+(function() {
+    var lastKnownUrl = null;
+    setInterval(function() {
+        if (!window.core) return;
+        if ((window.location.hash || '').indexOf('#/settings') !== 0) return;
+        window.core.getState('ctx').then(function(state) {
+            if (!state || !state.profile || !state.profile.settings) return;
+            var url = state.profile.settings.streamingServerUrl;
+            if (lastKnownUrl === null) { lastKnownUrl = url; return; }
+            if (url !== lastKnownUrl) {
+                console.log('[server-watch] URL changed:', lastKnownUrl, '->', url);
+                lastKnownUrl = url;
+                window.__STREMIO_SERVER_URL__ = url;
+                try { localStorage.setItem('stremio_server_url', url); } catch(e) {}
+                window.core.dispatch({ action: 'StreamingServer', args: { action: 'Reload' } }, 'streaming_server').then(function() {
+                    console.log('[server-watch] Streaming server reloaded');
+                }).catch(function(e) {
+                    console.error('[server-watch] Reload failed:', e);
+                });
+            }
+        }).catch(function() {});
+    }, 2000);
+})();
+</script>
+<script>
+// Dolby Vision Profile 7 detection and warning
+(function() {
+    window.__DV_PROFILE7_DETECTED__ = false;
+
+    var origFetch = window.fetch;
+    window.fetch = function(url, opts) {
+        var result = origFetch.apply(this, arguments);
+        try {
+            if (!window.__DV_PROFILE7_DETECTED__ && typeof url === 'string' && url.indexOf('/hlsv2/') !== -1 && url.indexOf('probe') !== -1) {
+                result.then(function(response) {
+                    var cloned = response.clone();
+                    cloned.json().then(function(data) {
+                        if (data && Array.isArray(data.streams)) {
+                            for (var i = 0; i < data.streams.length; i++) {
+                                var s = data.streams[i];
+                                if (s.track === 'video' && s.codec && /^dv(he|h1)\.07/.test(s.codec)) {
+                                    console.warn('[DV] Profile 7 detected:', s.codec);
+                                    window.__DV_PROFILE7_DETECTED__ = s.codec;
+                                    showDVWarning(s.codec);
+                                    break;
+                                }
+                            }
+                        }
+                    }).catch(function() {});
+                });
+            }
+        } catch(e) {}
+        return result;
+    };
+
+    function showDVWarning(codec) {
+        var existing = document.getElementById('dv-warning');
+        if (existing) existing.remove();
+
+        var overlay = document.createElement('div');
+        overlay.id = 'dv-warning';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);z-index:100000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;font-family:PlusJakartaSans,sans-serif;';
+
+        var inner = '<div style="font-size:2.2rem;margin-bottom:1rem;font-weight:700;">&#9888; Dolby Vision Profile 7</div>'
+            + '<div style="font-size:1.1rem;color:rgba(255,255,255,0.65);margin-bottom:2rem;text-align:center;max-width:560px;line-height:1.5;">'
+            + 'This stream uses <strong>' + codec + '</strong> (dual-layer HEVC) which cannot be decoded by the TV browser.'
+            + '<br>You can transcode it through your streaming server, or try a different source.</div>'
+            + '<div id="dv-actions" style="display:flex;gap:1.2rem;"></div>';
+        overlay.innerHTML = inner;
+
+        var serverUrl = window.__STREMIO_SERVER_URL__;
+        var actionsDiv = overlay.querySelector('#dv-actions');
+
+        // Transcode button (only if server configured and not localhost default)
+        var transBtn = document.createElement('button');
+        transBtn.textContent = 'Transcode to H.264';
+        transBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:#7b5bf5;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
+        transBtn.setAttribute('tabindex', '1');
+        transBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
+        transBtn.onblur = function() { this.style.outline = 'none'; };
+        transBtn.onclick = function() {
+            window.__FORCE_TRANSCODE__ = true;
+            window.__DV_PROFILE7_DETECTED__ = false;
+            overlay.remove();
+        };
+        actionsDiv.appendChild(transBtn);
+
+        var skipBtn = document.createElement('button');
+        skipBtn.textContent = 'Try Another Source';
+        skipBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
+        skipBtn.setAttribute('tabindex', '2');
+        skipBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
+        skipBtn.onblur = function() { this.style.outline = 'none'; };
+        skipBtn.onclick = function() {
+            window.__DV_PROFILE7_DETECTED__ = false;
+            overlay.remove();
+            window.history.back();
+        };
+        actionsDiv.appendChild(skipBtn);
+
+        document.body.appendChild(overlay);
+        setTimeout(function() { transBtn.focus(); }, 100);
+    }
+    window.__showDVWarning = showDVWarning;
+})();
+</script>
+<script>
+// Enhanced error messages for TV users
+(function() {
+    window.__STREMIO_ERROR_ENHANCER__ = function(err) {
+        if (!err) return null;
+        var msg = err.message || '';
+        var code = err.code || 0;
+
+        if (window.__DV_PROFILE7_DETECTED__) {
+            return 'Dolby Vision Profile 7 (' + window.__DV_PROFILE7_DETECTED__ + ') cannot be played. Use a streaming server for transcoding.';
+        }
+        if (msg.indexOf('not supported') !== -1 || msg === 'MEDIA_ERR_SRC_NOT_SUPPORTED') {
+            return 'This video codec is not supported by your TV. Try a different source, or configure a streaming server for transcoding (Settings \u2192 Server).';
+        }
+        if (msg === 'MEDIA_ERR_DECODE') {
+            return 'Video decode error \u2014 the codec may not be compatible. Try a different source or enable transcoding.';
+        }
+        if (msg === 'MEDIA_ERR_NETWORK') {
+            return 'Network error \u2014 check your connection and streaming server status.';
+        }
+        if (msg.indexOf('CONVERT_FAILED') !== -1 || msg.indexOf('transcode') !== -1 || msg.indexOf('Transcode') !== -1) {
+            return 'Transcoding failed \u2014 verify your streaming server is running and accessible.';
+        }
+        return msg;
+    };
+})();
+</script>
+<script>
+// Splash screen — remove when core is ready
+(function() {
+    var bar = document.getElementById('splash-bar');
+    var progress = 0;
+    var tick = setInterval(function() {
+        progress = Math.min(progress + Math.random() * 15, 90);
+        if (bar) bar.style.width = progress + '%';
+    }, 400);
+    var safetyTimer = null;
+    var check = setInterval(function() {
+        if (window.core) {
+            clearInterval(check);
+            clearInterval(tick);
+            if (safetyTimer) clearTimeout(safetyTimer);
+            if (bar) bar.style.width = '100%';
+            setTimeout(function() {
+                var splash = document.getElementById('splash');
+                if (splash) {
+                    splash.style.transition = 'opacity 0.3s';
+                    splash.style.opacity = '0';
+                    setTimeout(function() { splash.remove(); }, 300);
+                }
+            }, 200);
+        }
+    }, 300);
+    // Safety: remove after 30s regardless
+    safetyTimer = setTimeout(function() {
+        clearInterval(check);
+        clearInterval(tick);
+        var splash = document.getElementById('splash');
+        if (splash) splash.remove();
+    }, 30000);
+})();
+</script>
+<script>
+// Resolution indicator in player
+(function() {
+    var indicator = null;
+    var hideTimer = null;
+
+    function createIndicator() {
+        if (indicator) return indicator;
+        indicator = document.createElement('div');
+        indicator.id = 'quality-indicator';
+        indicator.style.cssText = 'position:fixed;top:14px;right:14px;background:rgba(0,0,0,0.75);color:white;padding:5px 12px;border-radius:6px;font-size:13px;z-index:99998;pointer-events:none;font-family:monospace;display:none;backdrop-filter:blur(4px);';
+        document.body.appendChild(indicator);
+        return indicator;
+    }
+
+    function showIndicator() {
+        if (!indicator) return;
+        indicator.style.display = 'block';
+        indicator.style.opacity = '1';
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(function() {
+            if (indicator) { indicator.style.transition = 'opacity 0.5s'; indicator.style.opacity = '0'; }
+        }, 5000);
+    }
+
+    document.addEventListener('keydown', function() {
+        if ((window.location.hash || '').indexOf('#/player/') === 0 && indicator) {
+            indicator.style.transition = 'none';
+            showIndicator();
+        }
+    });
+
+    setInterval(function() {
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/player/') !== 0) {
+            if (indicator) indicator.style.display = 'none';
+            return;
+        }
+        if (!indicator) createIndicator();
+        var video = document.querySelector('video');
+        if (!video || !video.videoWidth) return;
+
+        var el = indicator;
+        var w = video.videoWidth, h = video.videoHeight;
+        var label;
+        if (w >= 3840) label = '4K';
+        else if (w >= 2560) label = '1440p';
+        else if (w >= 1920) label = '1080p';
+        else if (w >= 1280) label = '720p';
+        else if (w >= 854) label = '480p';
+        else label = w + 'x' + h;
+
+        el.textContent = label;
+        if (el.style.display === 'none') showIndicator();
+    }, 3000);
+})();
+</script>
+<script>
+// VIDAA remote color button mappings
+(function() {
+    var healthOverlay = null;
+
+    document.addEventListener('keydown', function(e) {
+        var code = e.keyCode;
+
+        // Red (403) — toggle quality indicator
+        if (code === 403) {
+            var qi = document.getElementById('quality-indicator');
+            if (qi) qi.style.display = qi.style.display === 'none' ? 'block' : 'none';
+        }
+
+        // Green (404) — toggle server health overlay
+        if (code === 404) {
+            if (healthOverlay) { healthOverlay.remove(); healthOverlay = null; return; }
+            var h = window.__SERVER_HEALTH__ || {};
+            healthOverlay = document.createElement('div');
+            healthOverlay.style.cssText = 'position:fixed;bottom:60px;right:14px;background:rgba(0,0,0,0.85);color:white;padding:16px 20px;border-radius:10px;font-size:13px;z-index:99999;font-family:monospace;min-width:220px;backdrop-filter:blur(4px);';
+            healthOverlay.innerHTML = '<div style="font-weight:700;margin-bottom:8px;font-size:14px;">Server Health</div>'
+                + '<div>Status: <span style="color:' + (h.status === 'online' ? '#4ade80' : '#f87171') + ';">' + (h.status || 'unknown') + '</span></div>'
+                + '<div>Latency: ' + (h.latency ? h.latency + 'ms' : 'N/A') + '</div>'
+                + '<div>Version: ' + (h.version || 'N/A') + '</div>'
+                + '<div>URL: ' + (window.__STREMIO_SERVER_URL__ || 'default') + '</div>';
+            document.body.appendChild(healthOverlay);
+            setTimeout(function() { if (healthOverlay) { healthOverlay.remove(); healthOverlay = null; } }, 8000);
+        }
+
+        // Blue (406) — force transcode current stream
+        if (code === 406) {
+            if ((window.location.hash || '').indexOf('#/player/') === 0) {
+                window.__FORCE_TRANSCODE__ = true;
+                console.log('[remote] Force transcode enabled — reload stream to apply');
+            }
+        }
+
+        // Info (457) — show stream info
+        if (code === 457) {
+            var video = document.querySelector('video');
+            if (!video) return;
+            var info = document.getElementById('stream-info');
+            if (info) { info.remove(); return; }
+            info = document.createElement('div');
+            info.id = 'stream-info';
+            info.style.cssText = 'position:fixed;top:60px;left:14px;background:rgba(0,0,0,0.85);color:white;padding:16px 20px;border-radius:10px;font-size:13px;z-index:99999;font-family:monospace;min-width:260px;backdrop-filter:blur(4px);';
+            info.innerHTML = '<div style="font-weight:700;margin-bottom:8px;font-size:14px;">Stream Info</div>'
+                + '<div>Resolution: ' + (video.videoWidth || '?') + 'x' + (video.videoHeight || '?') + '</div>'
+                + '<div>Duration: ' + Math.round(video.duration || 0) + 's</div>'
+                + '<div>Buffered: ' + (video.buffered.length ? Math.round(video.buffered.end(video.buffered.length - 1)) + 's' : 'N/A') + '</div>'
+                + '<div>Current: ' + Math.round(video.currentTime || 0) + 's</div>'
+                + '<div>Paused: ' + video.paused + '</div>'
+                + '<div>DV P7: ' + (window.__DV_PROFILE7_DETECTED__ || 'No') + '</div>';
+            document.body.appendChild(info);
+            setTimeout(function() { if (info) info.remove(); }, 10000);
+        }
+    });
+})();
+</script>
+<script>
+// Server health monitoring
+(function() {
+    window.__SERVER_HEALTH__ = { status: 'unknown', latency: null, version: null };
+
+    function makeTimeoutSignal(ms) {
+        try {
+            if (typeof AbortController !== 'undefined') {
+                var ctrl = new AbortController();
+                setTimeout(function() { ctrl.abort(); }, ms);
+                return ctrl.signal;
+            }
+        } catch(e) {}
+        return undefined;
+    }
+
+    function checkHealth() {
+        var url = window.__STREMIO_SERVER_URL__;
+        if (!url) return;
+        var signal = makeTimeoutSignal(5000);
+        var start = Date.now();
+        fetch(url + '/settings', { signal: signal }).then(function(r) {
+            return r.json();
+        }).then(function(data) {
+            window.__SERVER_HEALTH__ = {
+                status: 'online',
+                latency: Date.now() - start,
+                version: data.serverVersion || data.version || null
+            };
+        }).catch(function() {
+            fetch(url + '/heartbeat', { signal: makeTimeoutSignal(5000) }).then(function() {
+                window.__SERVER_HEALTH__ = { status: 'online', latency: Date.now() - start, version: null };
+            }).catch(function() {
+                window.__SERVER_HEALTH__ = { status: 'offline', latency: null, version: null };
+            });
+        });
+    }
+
+    setInterval(checkHealth, 10000);
+    setTimeout(checkHealth, 3000);
+})();
+</script>
+<script>
+// Watchdog — auto-recover from UI freeze
+(function() {
+    window.__WATCHDOG_PAUSE__ = false;
+    var lastTick = Date.now();
+    setInterval(function() { lastTick = Date.now(); }, 1000);
+    setInterval(function() {
+        if (window.__WATCHDOG_PAUSE__) { lastTick = Date.now(); return; }
+        if (Date.now() - lastTick > 15000) {
+            console.error('[watchdog] UI freeze detected (>15s), reloading');
+            location.reload();
+        }
+    }, 5000);
+})();
+</script>
+<script>
+// Memory pressure monitoring
+(function() {
+    if (!performance || !performance.memory) return;
+    setInterval(function() {
+        var used = performance.memory.usedJSHeapSize;
+        var limit = performance.memory.jsHeapSizeLimit;
+        var pct = Math.round((used / limit) * 100);
+        if (pct > 85) {
+            console.warn('[memory] High usage: ' + Math.round(used/1048576) + 'MB / ' + Math.round(limit/1048576) + 'MB (' + pct + '%)');
+        }
+    }, 30000);
+})();
 </script>
 <script>
     // Detect VIDAA TV with 720p viewport

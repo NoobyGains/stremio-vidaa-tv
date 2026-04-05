@@ -400,7 +400,7 @@
                                             audioCodecs: d,
                                             maxAudioChannels: h
                                         });
-                                    return (n.forceTranscoding ? Promise.resolve(!1) : t.canPlayStream({
+                                    return (n.forceTranscoding || window.__FORCE_TRANSCODE__ ? (window.__FORCE_TRANSCODE__ && (window.__FORCE_TRANSCODE__ = !1), Promise.resolve(!1)) : t.canPlayStream({
                                         url: r
                                     }, f)).catch((function(e) {
                                         return console.warn("Media probe error", e), !1

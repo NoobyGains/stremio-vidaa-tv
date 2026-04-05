@@ -12,6 +12,7 @@
   <a href="https://noobygains.github.io/stremio-vidaa-tv/"><img src="https://img.shields.io/website?label=GitHub%20Pages&logo=github&up_message=online&down_message=offline&url=https%3A%2F%2Fnoobygains.github.io%2Fstremio-vidaa-tv%2F" alt="Pages status" /></a>
   <img src="https://img.shields.io/badge/frontend-Theater%20v1.9.2-blue" alt="Frontend version" />
   <img src="https://img.shields.io/badge/core-stremio--core--web%20v5%20(0.55.0)-purple" alt="Core version" />
+  <img src="https://img.shields.io/badge/build-v7-orange" alt="Build version" />
   <img src="https://img.shields.io/badge/platform-VIDAA%20OS-green" alt="Platform" />
   <a href="https://github.com/NoobyGains/stremio-vidaa-tv/stargazers"><img src="https://img.shields.io/github/stars/NoobyGains/stremio-vidaa-tv?style=social" alt="GitHub Stars" /></a>
 </p>
@@ -40,6 +41,9 @@ Every chunk was hand-merged: the original 58 UI/translation/route chunks are pre
 | **Caching** | GitHub Pages served stale JS forever | Cache-busting query strings (`?v=5`) on all scripts + no-cache meta tags |
 | **Offline load** | Every visit re-downloaded ~1 MB of JS + WASM from GitHub Pages | Service Worker caches the entire app shell after first load |
 | **Server URL** | Streaming server address was hard-coded — required a rebuild to change | Configurable via `?server=` query parameter |
+| **DV Profile 7** | Dolby Vision Profile 7 streams showed a black screen with no error | Detects DV P7 codec from probe metadata, shows warning overlay, offers transcode-to-H.264 or fallback to next source |
+| **Server URL** | `?server=` only affected heartbeat, not actual stream routing | URL now syncs directly to the WASM core on startup and auto-reloads when changed in Settings |
+| **Error messages** | Generic "video not supported" for all codec failures | Codec-specific, actionable messages that tell the user what to do |
 
 ## Quick Start
 
@@ -91,6 +95,42 @@ https://noobygains.github.io/stremio-vidaa-tv/?server=http://192.168.1.50:11470
 
 The setting is saved to `localStorage` — you only need to pass it once.
 
+## What's New in v7
+
+| Feature | Description |
+|---|---|
+| **Server URL fix** | `?server=` now properly syncs to the WASM core — streams actually route through your configured server |
+| **Auto-reload** | Changing the server URL in Settings automatically reloads the connection — no manual reload needed |
+| **DV Profile 7 detection** | Dolby Vision Profile 7 streams are detected before playback with a warning overlay and transcode option |
+| **Better error messages** | Codec-specific, actionable error messages instead of generic "video not supported" |
+| **Resolution indicator** | Shows current playback resolution (4K/1080p/720p/etc.) in the player |
+| **Splash screen** | Stremio-branded loading screen while WASM initialises |
+| **Remote shortcuts** | VIDAA color buttons mapped: Red=quality, Green=server health, Blue=force transcode, Info=stream details |
+| **Server health** | Real-time server status with latency monitoring |
+| **Watchdog** | Auto-recovers from UI freezes (>15s) |
+| **Memory monitor** | Warns on high memory usage to prevent TV browser crashes |
+
+## Remote Control Shortcuts
+
+| Button | Action |
+|---|---|
+| **Red** | Toggle resolution indicator |
+| **Green** | Show/hide server health overlay |
+| **Blue** | Force transcode current stream (useful for unsupported codecs) |
+| **Info / Display** | Show detailed stream info (resolution, buffer, duration, DV status) |
+
+## Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| **"Install" button does nothing on vidaahub.com** | Enable Developer Mode: TV Settings → System → About → press **1234** on the remote → toggle Developer Mode on. Ensure the sideload server script is running on a PC on the same network. |
+| **"Server Offline" in Settings** | Your streaming server must be running on a device on the same network. Test by visiting `http://<server-ip>:11470/heartbeat` in a browser. Use `?server=http://<ip>:11470` to configure. |
+| **Black screen during playback** | Likely a Dolby Vision Profile 7 or unsupported HEVC stream. v7 now detects this and shows a warning. Configure a streaming server for automatic transcoding. |
+| **Playback stops after ~2 minutes** | Usually a heartbeat/server connection issue. Make sure your streaming server is reachable and the URL is correctly configured. v7 fixes the auto-reload after URL changes. |
+| **Search keyboard not working** | Ensure you're on v7+ (check the version number in the bottom-right corner). The VIDAA keyboard fix is built in. |
+| **App shows old version after update** | The service worker may be serving a cached copy. Go to Settings → Clear Data, or add `?v=new` to the URL to force a refresh. |
+| **720p UI is clipped or too large** | The app auto-detects 720p VIDAA devices and applies a 65% zoom correction. If this isn't working, your TV may not be reporting the viewport correctly. |
+
 ## How It Works
 
 ```
@@ -99,6 +139,9 @@ The setting is saved to `localStorage` — you only need to pass it once.
 │  58 original chunks: home, discover,     │
 │  search, player, settings, library,      │
 │  addons, login, details, video, etc.     │
+├──────────────────────────────────────────┤
+│  v7 Patch Layer (index.html)             │
+│  Server sync, DV detection, QoL, etc.    │
 ├──────────────────────────────────────────┤
 │  v5 Core Bridge (core.chunk.js)          │
 │  External Worker loader → v5-worker.js   │

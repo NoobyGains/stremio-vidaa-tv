@@ -1413,7 +1413,7 @@
                                                 return ne.icon
                                             },
                                             name: "warning"
-                                        }), null), (0, r.Yr)(t, (() => e().message), null), (0, o.gb)((() => (0, r.s7)(t, ne.error))), t;
+                                        }), null), (0, r.Yr)(t, (() => window.__STREMIO_ERROR_ENHANCER__ ? window.__STREMIO_ERROR_ENHANCER__(e()) : e().message), null), (0, o.gb)((() => (0, r.s7)(t, ne.error))), t;
                                         var t
                                     }
                                 })
