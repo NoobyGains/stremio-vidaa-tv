@@ -126,52 +126,44 @@ test.describe('DV Profile 7 detection', () => {
     expect(flag).toBe(false);
   });
 
-  test('fetch interceptor detects DV Profile 7 from probe', async ({ page }) => {
+  test('fetch interceptor logs DV codec from probe without blocking', async ({ page }) => {
     await page.goto('/');
 
-    // Mock a probe response with DV Profile 7 codec
-    await page.evaluate(() => {
-      // Simulate the probe response
-      window.__testDVResult = null;
-      window.addEventListener('dv-profile7-detected', function(ev) {
-        window.__testDVResult = ev.detail;
-      });
-    });
-
-    // The fetch interceptor checks for /hlsv2/ + probe in the URL
-    // We can't easily trigger a real fetch, but we can verify the warning function exists
-    const hasWarningFn = await page.evaluate(() => typeof window.__showDVWarning === 'function');
+    // The new smart DV handler logs codec info but doesn't show a warning preemptively
+    const hasWarningFn = await page.evaluate(() => typeof window.__showPlaybackWarning === 'function');
     expect(hasWarningFn).toBe(true);
   });
 
-  test('DV warning overlay can be shown and dismissed', async ({ page }) => {
+  test('playback warning overlay can be shown and dismissed', async ({ page }) => {
     await page.goto('/');
 
-    // Trigger the warning manually
+    // Trigger the warning manually (simulates stalled playback detection)
     await page.evaluate(() => {
-      window.__showDVWarning('dvhe.07.06');
+      window.__STREAM_INFO__ = { videoCodec: 'dvhe.07.06', width: 3840, height: 2160 };
+      window.__showPlaybackWarning();
     });
 
     const overlay = page.locator('#dv-warning');
     await expect(overlay).toBeVisible();
-    await expect(overlay).toContainText('Dolby Vision Profile 7');
-    await expect(overlay).toContainText('dvhe.07.06');
+    await expect(overlay).toContainText('Playback Issue Detected');
 
-    // Click "Try Another Source" to dismiss
-    await page.click('text=Try Another Source');
+    // Click "Dismiss" to close
+    await page.click('text=Dismiss');
     await expect(overlay).not.toBeAttached();
   });
 
-  test('DV warning transcode button sets force flag', async ({ page }) => {
+  test('playback warning transcode button sets force flag', async ({ page }) => {
     await page.goto('/');
 
-    await page.evaluate(() => { window.__showDVWarning('dvhe.07.06'); });
-    await page.click('text=Transcode to H.264');
+    await page.evaluate(() => {
+      window.__STREAM_INFO__ = { videoCodec: 'dvhe.07.06', width: 3840, height: 2160 };
+      window.__showPlaybackWarning();
+    });
+    await page.click('text=Force Transcode');
 
     const flag = await page.evaluate(() => window.__FORCE_TRANSCODE__);
     expect(flag).toBe(true);
 
-    // Overlay should be dismissed
     await expect(page.locator('#dv-warning')).not.toBeAttached();
   });
 });
@@ -208,13 +200,14 @@ test.describe('Error enhancer', () => {
     expect(msg).toContain('Network error');
   });
 
-  test('enhancer returns DV-specific message when DV detected', async ({ page }) => {
+  test('enhancer returns DV-specific message when DV stall detected', async ({ page }) => {
     await page.goto('/');
     const msg = await page.evaluate(() => {
       window.__DV_PROFILE7_DETECTED__ = 'dvhe.07.06';
+      window.__STREAM_INFO__ = { stallCheck: Date.now() };
       return window.__STREMIO_ERROR_ENHANCER__({ message: 'some error' });
     });
-    expect(msg).toContain('Dolby Vision Profile 7');
+    expect(msg).toContain('Dolby Vision');
     expect(msg).toContain('dvhe.07.06');
   });
 

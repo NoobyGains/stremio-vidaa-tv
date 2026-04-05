@@ -174,26 +174,83 @@
 })();
 </script>
 <script>
-// Dolby Vision Profile 7 detection and warning
+// Smart DV/HDR stream handling
+// Based on live hardware testing on Hisense PX1HE (100L5H):
+// - DV+HDR in MKV at 4K: PLAYS NATIVELY (no transcoding needed)
+// - DV+HDR in MP4: crashes browser (container issue)
+// - Content >4K (4320p/8K upscale): black screen (decoder limit)
+// - HEVC 4K 10-bit: plays fine
+// - AV1: not supported
 (function() {
     window.__DV_PROFILE7_DETECTED__ = false;
+    window.__STREAM_INFO__ = {};
 
+    // Monitor video element for playback failures — warn only on actual failure
+    var watchInterval = null;
+
+    function startPlaybackWatch() {
+        if (watchInterval) return;
+        watchInterval = setInterval(function() {
+            var hash = window.location.hash || '';
+            if (hash.indexOf('#/player/') !== 0) {
+                if (watchInterval) { clearInterval(watchInterval); watchInterval = null; }
+                return;
+            }
+            var video = document.querySelector('video');
+            if (!video) return;
+
+            // Check for >4K resolution (decoder limit)
+            if (video.videoWidth > 4096 || video.videoHeight > 2160) {
+                console.warn('[stream] Resolution ' + video.videoWidth + 'x' + video.videoHeight + ' exceeds 4K — may cause issues');
+                window.__STREAM_INFO__.oversize = true;
+            }
+
+            // Detect stalled DV playback (black screen = video loads but no frames render)
+            if (video.readyState >= 2 && video.currentTime === 0 && !video.paused && !video.ended) {
+                // Video thinks it's playing but stuck at 0 — possible black screen
+                if (!window.__STREAM_INFO__.stallCheck) {
+                    window.__STREAM_INFO__.stallCheck = Date.now();
+                } else if (Date.now() - window.__STREAM_INFO__.stallCheck > 8000) {
+                    // 8 seconds with no progress — likely a black screen
+                    console.warn('[stream] Playback stalled — possible codec/container issue');
+                    showPlaybackWarning();
+                    window.__STREAM_INFO__.stallCheck = null;
+                }
+            } else {
+                window.__STREAM_INFO__.stallCheck = null;
+            }
+        }, 2000);
+    }
+
+    // Watch for player route
+    setInterval(function() {
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/player/') === 0) {
+            startPlaybackWatch();
+            window.__STREAM_INFO__ = {};
+        }
+    }, 1000);
+
+    // Intercept probe responses — log codec info but DON'T block playback
     var origFetch = window.fetch;
     window.fetch = function(url, opts) {
         var result = origFetch.apply(this, arguments);
         try {
-            if (!window.__DV_PROFILE7_DETECTED__ && typeof url === 'string' && url.indexOf('/hlsv2/') !== -1 && url.indexOf('probe') !== -1) {
+            if (typeof url === 'string' && url.indexOf('/hlsv2/') !== -1 && url.indexOf('probe') !== -1) {
                 result.then(function(response) {
                     var cloned = response.clone();
                     cloned.json().then(function(data) {
                         if (data && Array.isArray(data.streams)) {
                             for (var i = 0; i < data.streams.length; i++) {
                                 var s = data.streams[i];
-                                if (s.track === 'video' && s.codec && /^dv(he|h1)\.07/.test(s.codec)) {
-                                    console.warn('[DV] Profile 7 detected:', s.codec);
-                                    window.__DV_PROFILE7_DETECTED__ = s.codec;
-                                    showDVWarning(s.codec);
-                                    break;
+                                if (s.track === 'video') {
+                                    window.__STREAM_INFO__.videoCodec = s.codec;
+                                    window.__STREAM_INFO__.width = s.width;
+                                    window.__STREAM_INFO__.height = s.height;
+                                    if (s.codec && /^dv(he|h1)/.test(s.codec)) {
+                                        window.__DV_PROFILE7_DETECTED__ = s.codec;
+                                        console.log('[DV] Detected:', s.codec, s.width + 'x' + s.height, '— letting browser attempt native playback');
+                                    }
                                 }
                             }
                         }
@@ -204,34 +261,38 @@
         return result;
     };
 
-    function showDVWarning(codec) {
+    function showPlaybackWarning() {
         var existing = document.getElementById('dv-warning');
-        if (existing) existing.remove();
+        if (existing) return;
+
+        var codec = window.__STREAM_INFO__.videoCodec || 'unknown';
+        var res = (window.__STREAM_INFO__.width || '?') + 'x' + (window.__STREAM_INFO__.height || '?');
+        var isOversize = window.__STREAM_INFO__.width > 4096 || window.__STREAM_INFO__.height > 2160;
 
         var overlay = document.createElement('div');
         overlay.id = 'dv-warning';
         overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);z-index:100000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;font-family:PlusJakartaSans,sans-serif;';
 
-        var inner = '<div style="font-size:2.2rem;margin-bottom:1rem;font-weight:700;">&#9888; Dolby Vision Profile 7</div>'
-            + '<div style="font-size:1.1rem;color:rgba(255,255,255,0.65);margin-bottom:2rem;text-align:center;max-width:560px;line-height:1.5;">'
-            + 'This stream uses <strong>' + codec + '</strong> (dual-layer HEVC) which cannot be decoded by the TV browser.'
-            + '<br>You can transcode it through your streaming server, or try a different source.</div>'
+        var title = isOversize ? 'Resolution Too High' : 'Playback Issue Detected';
+        var detail = isOversize
+            ? 'This stream is ' + res + ' which exceeds your TV\'s 4K decode limit. Try a 2160p or 1080p source instead.'
+            : 'This stream (' + codec + ' @ ' + res + ') is not rendering. The container format may be incompatible. Try an MKV source, or transcode via your streaming server.';
+
+        var inner = '<div style="font-size:2.2rem;margin-bottom:1rem;font-weight:700;">' + title + '</div>'
+            + '<div style="font-size:1.1rem;color:rgba(255,255,255,0.65);margin-bottom:2rem;text-align:center;max-width:560px;line-height:1.5;">' + detail + '</div>'
             + '<div id="dv-actions" style="display:flex;gap:1.2rem;"></div>';
         overlay.innerHTML = inner;
 
-        var serverUrl = window.__STREMIO_SERVER_URL__;
         var actionsDiv = overlay.querySelector('#dv-actions');
 
-        // Transcode button (only if server configured and not localhost default)
         var transBtn = document.createElement('button');
-        transBtn.textContent = 'Transcode to H.264';
+        transBtn.textContent = 'Force Transcode';
         transBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:#7b5bf5;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
         transBtn.setAttribute('tabindex', '1');
         transBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
         transBtn.onblur = function() { this.style.outline = 'none'; };
         transBtn.onclick = function() {
             window.__FORCE_TRANSCODE__ = true;
-            window.__DV_PROFILE7_DETECTED__ = false;
             overlay.remove();
         };
         actionsDiv.appendChild(transBtn);
@@ -243,16 +304,24 @@
         skipBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
         skipBtn.onblur = function() { this.style.outline = 'none'; };
         skipBtn.onclick = function() {
-            window.__DV_PROFILE7_DETECTED__ = false;
             overlay.remove();
             window.history.back();
         };
         actionsDiv.appendChild(skipBtn);
 
+        var dismissBtn = document.createElement('button');
+        dismissBtn.textContent = 'Dismiss';
+        dismissBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.1);border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
+        dismissBtn.setAttribute('tabindex', '3');
+        dismissBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
+        dismissBtn.onblur = function() { this.style.outline = 'none'; };
+        dismissBtn.onclick = function() { overlay.remove(); };
+        actionsDiv.appendChild(dismissBtn);
+
         document.body.appendChild(overlay);
         setTimeout(function() { transBtn.focus(); }, 100);
     }
-    window.__showDVWarning = showDVWarning;
+    window.__showPlaybackWarning = showPlaybackWarning;
 })();
 </script>
 <script>
@@ -263,8 +332,8 @@
         var msg = err.message || '';
         var code = err.code || 0;
 
-        if (window.__DV_PROFILE7_DETECTED__) {
-            return 'Dolby Vision Profile 7 (' + window.__DV_PROFILE7_DETECTED__ + ') cannot be played. Use a streaming server for transcoding.';
+        if (window.__DV_PROFILE7_DETECTED__ && window.__STREAM_INFO__ && window.__STREAM_INFO__.stallCheck) {
+            return 'Dolby Vision stream (' + window.__DV_PROFILE7_DETECTED__ + ') failed to render. Try an MKV source or use a streaming server for transcoding.';
         }
         if (msg.indexOf('not supported') !== -1 || msg === 'MEDIA_ERR_SRC_NOT_SUPPORTED') {
             return 'This video codec is not supported by your TV. Try a different source, or configure a streaming server for transcoding (Settings \u2192 Server).';
