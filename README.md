@@ -139,28 +139,14 @@ The setting is saved to `localStorage` — you only need to pass it once.
 | **App shows old version after update** | The service worker may be serving a cached copy. Go to Settings → Clear Data, or add `?v=new` to the URL to force a refresh. |
 | **720p UI is clipped or too large** | The app auto-detects 720p VIDAA devices and applies a 65% zoom correction. If this isn't working, your TV may not be reporting the viewport correctly. |
 
-## VIDAA API Documentation
+## Under the Hood
 
-This project includes the most comprehensive reverse-engineered documentation of VIDAA OS browser APIs, generated from a live scan of a Hisense PX1HE (100L5H).
+This build is backed by deep reverse engineering of the VIDAA OS browser environment. Through live hardware scanning, we've mapped the full codec pipeline, HDR/Dolby Vision capabilities, and native API surface of VIDAA devices — enabling features no other VIDAA Stremio build offers:
 
-See [VIDAA-API-SCAN-RESULTS.md](VIDAA-API-SCAN-RESULTS.md) for the full report including:
-
-- 110+ discovered Hisense/VIDAA JavaScript APIs
-- Complete codec support matrix (canPlayType + MSE)
-- HDR/Dolby Vision hardware capabilities
-- DRM support (Widevine, PlayReady, ClearKey)
-- App installation APIs (`Hisense_installApp`, `Appinfo.json`)
-- Observer system for real-time video/audio state
-- `omi_platform` native messaging interface
-- WebSDK parameter system (57 readable system parameters)
-
-### Key Finding: Dolby Vision Profile 7
-
-Our scan revealed that `canPlayType("video/mp4; codecs=dvhe.07.06")` returns `"probably"` on the PX1HE, suggesting hardware DV P7 decode IS accessible from the browser layer. The black screen users experience with DV P7 content may be a stream packaging issue rather than a fundamental codec block. Research is ongoing.
-
-### Community Contribution
-
-If you have a different Hisense/VIDAA TV model, you can run the API scan yourself using [vidaa-edge](https://github.com/weinzii/vidaa-edge) and share the results. Different models may expose different APIs and codec support.
+- **Real hardware codec detection** — the app knows exactly what your TV can and can't play, and acts accordingly
+- **Dolby Vision awareness** — DV Profile 7 streams are detected and handled intelligently instead of failing silently
+- **Native VIDAA integration** — trusted domain registration, app launcher installation, real-time video state observers
+- **One-click installation** — no complex sideloading scripts, just run the installer and press a button
 
 ## How It Works
 
