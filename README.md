@@ -58,7 +58,7 @@ The easiest way to install. Requires a PC on the same network as your TV.
    python server.py
    ```
 2. On your **TV**: go to Settings > Network > DNS and set it to the IP shown by the script
-3. On your **TV**: open the browser and go to `https://vidaahub.com`
+3. On your **TV**: open the **Internet Browser** (Home > Apps > look for "Browser" or the globe icon, check "All Apps" if you don't see it) and go to `https://vidaahub.com`
 4. Press **Install Stremio**
 5. Revert DNS to automatic and restart your TV
 6. Stremio appears in your app launcher permanently
@@ -69,11 +69,14 @@ The installer also registers GitHub Pages as a trusted domain, so future updates
 
 If you've previously sideloaded any app via DNS spoofing:
 
-```
-https://noobygains.github.io/stremio-vidaa-tv/
-```
-
-The app will prompt you to "Install to Launcher" on first run.
+1. On your TV, press the **Home** button on the remote
+2. Navigate to the **VIDAA App Store** or **Apps** row
+3. Find and open the **Internet Browser** (it may be labelled "Browser" or have a globe icon — if you don't see it, check "All Apps" or search for "Browser")
+4. In the address bar, type:
+   ```
+   https://noobygains.github.io/stremio-vidaa-tv/
+   ```
+5. The app loads and will prompt you to "Install to Launcher" on first run
 
 ### Method 3: Self-hosted with Docker
 
