@@ -41,7 +41,7 @@ Every chunk was hand-merged: the original 58 UI/translation/route chunks are pre
 | **Caching** | GitHub Pages served stale JS forever | Cache-busting query strings (`?v=5`) on all scripts + no-cache meta tags |
 | **Offline load** | Every visit re-downloaded ~1 MB of JS + WASM from GitHub Pages | Service Worker caches the entire app shell after first load |
 | **Server URL** | Streaming server address was hard-coded — required a rebuild to change | Configurable via `?server=` query parameter |
-| **DV Profile 7** | Dolby Vision Profile 7 streams showed a black screen with no error | Detects DV P7 codec from probe metadata, shows warning overlay, offers transcode-to-H.264 or fallback to next source |
+| **DV Profile 7** | Dolby Vision Profile 7 streams showed a black screen with no error | Smart stall detection warns only on actual failure. Tested on PX1HE: DV+HDR MKV plays natively at 4K, MP4 container not supported |
 | **Server URL** | `?server=` only affected heartbeat, not actual stream routing | URL now syncs directly to the WASM core on startup and auto-reloads when changed in Settings |
 | **Error messages** | Generic "video not supported" for all codec failures | Codec-specific, actionable messages that tell the user what to do |
 
@@ -136,7 +136,7 @@ You can also change the server URL inside the app: **Settings > Server > Edit UR
 |---|---|
 | **Server URL fix** | `?server=` now properly syncs to the WASM core — streams actually route through your configured server |
 | **Auto-reload** | Changing the server URL in Settings automatically reloads the connection — no manual reload needed |
-| **DV Profile 7 detection** | Dolby Vision Profile 7 streams are detected before playback with a warning overlay and transcode option |
+| **Dolby Vision** | DV+HDR MKV streams play natively at 4K (tested on PX1HE). MP4 DV not supported. Smart stall detection warns only on actual failure |
 | **Better error messages** | Codec-specific, actionable error messages instead of generic "video not supported" |
 | **Resolution indicator** | Shows current playback resolution (4K/1080p/720p/etc.) in the player |
 | **Splash screen** | Stremio-branded loading screen while WASM initialises |
@@ -160,7 +160,7 @@ You can also change the server URL inside the app: **Settings > Server > Edit UR
 |---|---|
 | **"Install" button does nothing on vidaahub.com** | Enable Developer Mode: TV Settings → System → About → press **1234** on the remote → toggle Developer Mode on. Ensure the sideload server script is running on a PC on the same network. |
 | **"Server Offline" in Settings** | Your streaming server must be running on a device on the same network. Test by visiting `http://<server-ip>:11470/heartbeat` in a browser. Use `?server=http://<ip>:11470` to configure. |
-| **Black screen during playback** | Likely a Dolby Vision Profile 7 or unsupported HEVC stream. v7 now detects this and shows a warning. Configure a streaming server for automatic transcoding. |
+| **Black screen during playback** | Could be a DV stream in MP4 container (not supported), content above 4K resolution, or an unsupported codec. The app now detects stalled playback and offers options. DV+HDR in MKV at 4K plays natively on tested hardware (PX1HE). |
 | **Playback stops after ~2 minutes** | Usually a heartbeat/server connection issue. Make sure your streaming server is reachable and the URL is correctly configured. v7 fixes the auto-reload after URL changes. |
 | **Search keyboard not working** | Ensure you're on v7+ (check the version number in the bottom-right corner). The VIDAA keyboard fix is built in. |
 | **App shows old version after update** | The service worker may be serving a cached copy. Go to Settings → Clear Data, or add `?v=new` to the URL to force a refresh. |
@@ -171,7 +171,7 @@ You can also change the server URL inside the app: **Settings > Server > Edit UR
 This build is backed by deep reverse engineering of the VIDAA OS browser environment. Through live hardware scanning, we've mapped the full codec pipeline, HDR/Dolby Vision capabilities, and native API surface of VIDAA devices — enabling features no other VIDAA Stremio build offers:
 
 - **Real hardware codec detection** — the app knows exactly what your TV can and can't play, and acts accordingly
-- **Dolby Vision awareness** — DV Profile 7 streams are detected and handled intelligently instead of failing silently
+- **Dolby Vision awareness** — DV+HDR MKV streams play natively at 4K (tested on PX1HE, MP4 not supported). Smart stall detection handles failures gracefully
 - **Native VIDAA integration** — trusted domain registration, app launcher installation, real-time video state observers
 - **One-click installation** — no complex sideloading scripts, just run the installer and press a button
 
