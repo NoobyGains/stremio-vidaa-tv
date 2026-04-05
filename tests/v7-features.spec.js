@@ -333,7 +333,7 @@ test.describe('Service Worker', () => {
 test.describe('720p zoom detection', () => {
   test('screen720p flag defaults to false in non-VIDAA env', async ({ page }) => {
     await page.goto('/');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(2500);
     const is720p = await page.evaluate(() => window.screen720p);
     expect(is720p).toBe(false);
   });

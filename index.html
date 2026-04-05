@@ -9,6 +9,10 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <link rel="shortcut icon" type="image/ico" href="assets/favicon.ico" />
+    <style>
+        [focused], :focus { outline: 2px solid #7b5bf5 !important; outline-offset: 2px; }
+        button:focus { outline: 3px solid #a78bfa !important; outline-offset: 2px; }
+    </style>
     <title>Stremio - Freedom to Stream</title>
     <script>
     // Configurable streaming server URL
@@ -23,6 +27,10 @@
         }
         window.__STREMIO_SERVER_URL__ = localStorage.getItem('stremio_server_url') || 'http://127.0.0.1:11470';
     })();
+    </script>
+    <script>
+    // XSS escape helper for dynamic innerHTML values
+    function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
     </script>
     <script>
     // VIDAA keyboard fix v5 — intercept programmatic input.value changes
@@ -105,9 +113,22 @@
     <div id="patch-version" style="position:fixed;bottom:4px;right:8px;color:rgba(255,255,255,0.3);font-size:10px;z-index:99999;pointer-events:none;">v7</div>
 </body>
 <script>
-    // Register service worker for offline caching
+    // Register service worker with auto-update
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js').catch(function() {});
+        navigator.serviceWorker.register('./sw.js').then(function(reg) {
+            reg.addEventListener('updatefound', function() {
+                var newWorker = reg.installing;
+                if (newWorker) {
+                    newWorker.addEventListener('statechange', function() {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            newWorker.postMessage('skipWaiting');
+                            console.log('[sw] New version installed, refreshing...');
+                            setTimeout(function() { location.reload(); }, 1000);
+                        }
+                    });
+                }
+            });
+        }).catch(function() {});
     }
 </script>
 <script>
@@ -151,7 +172,9 @@
 // Auto-reload streaming server when URL changes in Settings UI
 (function() {
     var lastKnownUrl = null;
+    var watchDelay = 0;
     setInterval(function() {
+        if (++watchDelay < 5) return; // Skip first 10 seconds to let server-sync finish
         if (!window.core) return;
         if ((window.location.hash || '').indexOf('#/settings') !== 0) return;
         window.core.getState('ctx').then(function(state) {
@@ -223,12 +246,16 @@
     }
 
     // Watch for player route
+    var wasInPlayer = false;
     setInterval(function() {
         var hash = window.location.hash || '';
-        if (hash.indexOf('#/player/') === 0) {
+        var inPlayer = hash.indexOf('#/player/') === 0;
+        if (inPlayer) {
+            if (!wasInPlayer) { window.__STREAM_INFO__ = {}; }
             startPlaybackWatch();
-            window.__STREAM_INFO__ = {};
         }
+        if (!inPlayer) { window.__FORCE_TRANSCODE__ = false; }
+        wasInPlayer = inPlayer;
     }, 1000);
 
     // Intercept probe responses — log codec info but DON'T block playback
@@ -275,8 +302,8 @@
 
         var title = isOversize ? 'Resolution Too High' : 'Playback Issue Detected';
         var detail = isOversize
-            ? 'This stream is ' + res + ' which exceeds your TV\'s 4K decode limit. Try a 2160p or 1080p source instead.'
-            : 'This stream (' + codec + ' @ ' + res + ') is not rendering. The container format may be incompatible. Try an MKV source, or transcode via your streaming server.';
+            ? 'This stream is ' + esc(res) + ' which exceeds your TV\'s 4K decode limit. Try a 2160p or 1080p source instead.'
+            : 'This stream (' + esc(codec) + ' @ ' + esc(res) + ') is not rendering. The container format may be incompatible. Try an MKV source, or transcode via your streaming server.';
 
         var inner = '<div style="font-size:2.2rem;margin-bottom:1rem;font-weight:700;">' + title + '</div>'
             + '<div style="font-size:1.1rem;color:rgba(255,255,255,0.65);margin-bottom:2rem;text-align:center;max-width:560px;line-height:1.5;">' + detail + '</div>'
@@ -293,10 +320,11 @@
             var nativeBtn = document.createElement('button');
             nativeBtn.textContent = 'Open in Native Player';
             nativeBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:#7b5bf5;color:white;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
-            nativeBtn.setAttribute('tabindex', '1');
+            nativeBtn.setAttribute('tabindex', '0');
             nativeBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
             nativeBtn.onblur = function() { this.style.outline = 'none'; };
             nativeBtn.onclick = function() {
+                window.__STREAM_INFO__.stallCheck = null;
                 var video = document.querySelector('video');
                 var streamUrl = video ? video.currentSrc || video.src : null;
                 if (streamUrl) {
@@ -310,22 +338,27 @@
         var transBtn = document.createElement('button');
         transBtn.textContent = 'Force Transcode';
         transBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:' + (hasNativePlayer ? 'rgba(255,255,255,0.1)' : '#7b5bf5') + ';color:white;border:' + (hasNativePlayer ? '1px solid rgba(255,255,255,0.25)' : 'none') + ';border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
-        transBtn.setAttribute('tabindex', hasNativePlayer ? '2' : '1');
+        transBtn.setAttribute('tabindex', '0');
         transBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
         transBtn.onblur = function() { this.style.outline = 'none'; };
         transBtn.onclick = function() {
+            window.__STREAM_INFO__.stallCheck = null;
             window.__FORCE_TRANSCODE__ = true;
             overlay.remove();
+            var ch = window.location.hash;
+            window.location.hash = '#/home';
+            setTimeout(function() { window.location.hash = ch; }, 100);
         };
         actionsDiv.appendChild(transBtn);
 
         var skipBtn = document.createElement('button');
         skipBtn.textContent = 'Try Another Source';
         skipBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
-        skipBtn.setAttribute('tabindex', hasNativePlayer ? '3' : '2');
+        skipBtn.setAttribute('tabindex', '0');
         skipBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
         skipBtn.onblur = function() { this.style.outline = 'none'; };
         skipBtn.onclick = function() {
+            window.__STREAM_INFO__.stallCheck = null;
             overlay.remove();
             window.history.back();
         };
@@ -334,10 +367,10 @@
         var dismissBtn = document.createElement('button');
         dismissBtn.textContent = 'Dismiss';
         dismissBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.1);border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
-        dismissBtn.setAttribute('tabindex', hasNativePlayer ? '4' : '3');
+        dismissBtn.setAttribute('tabindex', '0');
         dismissBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
         dismissBtn.onblur = function() { this.style.outline = 'none'; };
-        dismissBtn.onclick = function() { overlay.remove(); };
+        dismissBtn.onclick = function() { window.__STREAM_INFO__.stallCheck = null; overlay.remove(); };
         actionsDiv.appendChild(dismissBtn);
 
         document.body.appendChild(overlay);
@@ -384,7 +417,7 @@
     }, 400);
     var safetyTimer = null;
     var check = setInterval(function() {
-        if (window.core) {
+        if (window.core && typeof window.core.getState === 'function') {
             clearInterval(check);
             clearInterval(tick);
             if (safetyTimer) clearTimeout(safetyTimer);
@@ -460,7 +493,23 @@
         else if (w >= 854) label = '480p';
         else label = w + 'x' + h;
 
-        el.textContent = label;
+        // Append codec/HDR info from VIDAA state
+        if (window.__VIDAA_STATE__) {
+            if (window.__VIDAA_STATE__.videoCodec) label += ' ' + window.__VIDAA_STATE__.videoCodec;
+            if (window.__VIDAA_STATE__.hdr) label += ' ' + window.__VIDAA_STATE__.hdr;
+            if (window.__VIDAA_STATE__.dolbyVision) label += ' DV';
+        }
+        if (window.__STREAM_INFO__ && window.__STREAM_INFO__.videoCodec) {
+            if (label.indexOf(window.__STREAM_INFO__.videoCodec) === -1) {
+                label += ' ' + window.__STREAM_INFO__.videoCodec;
+            }
+        }
+
+        // Buffer health dot
+        var bufferSec = 0;
+        try { if (video.buffered.length) bufferSec = video.buffered.end(video.buffered.length - 1) - video.currentTime; } catch(e) {}
+        var dotColor = bufferSec > 30 ? '#4ade80' : bufferSec > 10 ? '#fbbf24' : '#f87171';
+        el.innerHTML = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';margin-right:6px;vertical-align:middle;"></span>' + esc(label);
         if (el.style.display === 'none') showIndicator();
     }, 3000);
 })();
@@ -486,19 +535,22 @@
             healthOverlay = document.createElement('div');
             healthOverlay.style.cssText = 'position:fixed;bottom:60px;right:14px;background:rgba(0,0,0,0.85);color:white;padding:16px 20px;border-radius:10px;font-size:13px;z-index:99999;font-family:monospace;min-width:220px;backdrop-filter:blur(4px);';
             healthOverlay.innerHTML = '<div style="font-weight:700;margin-bottom:8px;font-size:14px;">Server Health</div>'
-                + '<div>Status: <span style="color:' + (h.status === 'online' ? '#4ade80' : '#f87171') + ';">' + (h.status || 'unknown') + '</span></div>'
+                + '<div>Status: <span style="color:' + (h.status === 'online' ? '#4ade80' : '#f87171') + ';">' + esc(h.status || 'unknown') + '</span></div>'
                 + '<div>Latency: ' + (h.latency ? h.latency + 'ms' : 'N/A') + '</div>'
-                + '<div>Version: ' + (h.version || 'N/A') + '</div>'
-                + '<div>URL: ' + (window.__STREMIO_SERVER_URL__ || 'default') + '</div>';
+                + '<div>Version: ' + esc(h.version || 'N/A') + '</div>'
+                + '<div>URL: ' + esc(window.__STREMIO_SERVER_URL__ || 'default') + '</div>';
             document.body.appendChild(healthOverlay);
             setTimeout(function() { if (healthOverlay) { healthOverlay.remove(); healthOverlay = null; } }, 8000);
         }
 
-        // Blue (406) — force transcode current stream
+        // Blue (406) — force transcode current stream (reloads player)
         if (code === 406) {
-            if ((window.location.hash || '').indexOf('#/player/') === 0) {
+            var ph = window.location.hash || '';
+            if (ph.indexOf('#/player/') === 0) {
                 window.__FORCE_TRANSCODE__ = true;
-                console.log('[remote] Force transcode enabled — reload stream to apply');
+                console.log('[remote] Force transcode enabled, reloading stream');
+                window.location.hash = '#/home';
+                setTimeout(function() { window.location.hash = ph; }, 100);
             }
         }
 
@@ -511,27 +563,29 @@
             info = document.createElement('div');
             info.id = 'stream-info';
             info.style.cssText = 'position:fixed;top:60px;left:14px;background:rgba(0,0,0,0.85);color:white;padding:16px 20px;border-radius:10px;font-size:13px;z-index:99999;font-family:monospace;min-width:260px;backdrop-filter:blur(4px);';
+            var bufferedStr = 'N/A';
+            try { if (video.buffered.length) bufferedStr = Math.round(video.buffered.end(video.buffered.length - 1)) + 's'; } catch(e) {}
             info.innerHTML = '<div style="font-weight:700;margin-bottom:8px;font-size:14px;">Stream Info</div>'
-                + '<div>Resolution: ' + (video.videoWidth || '?') + 'x' + (video.videoHeight || '?') + '</div>'
+                + '<div>Resolution: ' + esc((video.videoWidth || '?') + 'x' + (video.videoHeight || '?')) + '</div>'
                 + '<div>Duration: ' + Math.round(video.duration || 0) + 's</div>'
-                + '<div>Buffered: ' + (video.buffered.length ? Math.round(video.buffered.end(video.buffered.length - 1)) + 's' : 'N/A') + '</div>'
+                + '<div>Buffered: ' + esc(bufferedStr) + '</div>'
                 + '<div>Current: ' + Math.round(video.currentTime || 0) + 's</div>'
                 + '<div>Paused: ' + video.paused + '</div>'
-                + '<div>DV P7: ' + (window.__DV_PROFILE7_DETECTED__ || 'No') + '</div>';
+                + '<div>DV P7: ' + esc(window.__DV_PROFILE7_DETECTED__ || 'No') + '</div>';
             if (window.__VIDAA_CAPS__) {
                 info.innerHTML += '<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.15);padding-top:8px;">'
                     + '<div style="font-weight:700;margin-bottom:4px;">VIDAA Device</div>'
-                    + '<div>Model: ' + (window.__VIDAA_CAPS__.model || '?') + '</div>'
-                    + '<div>Chipset: ' + (window.__VIDAA_CAPS__.chipset || '?') + '</div>'
-                    + '<div>HDR: ' + JSON.stringify(window.__VIDAA_CAPS__.hdrInfo || {}) + '</div>'
-                    + '<div>Atmos: ' + (window.__VIDAA_CAPS__.dolbyAtmos || '?') + '</div>'
+                    + '<div>Model: ' + esc(window.__VIDAA_CAPS__.model || '?') + '</div>'
+                    + '<div>Chipset: ' + esc(window.__VIDAA_CAPS__.chipset || '?') + '</div>'
+                    + '<div>HDR: ' + esc(JSON.stringify(window.__VIDAA_CAPS__.hdrInfo || {})) + '</div>'
+                    + '<div>Atmos: ' + esc(window.__VIDAA_CAPS__.dolbyAtmos || '?') + '</div>'
                     + '</div>';
             }
             if (window.__VIDAA_STATE__ && Object.keys(window.__VIDAA_STATE__).length > 0) {
                 info.innerHTML += '<div style="margin-top:4px;">'
-                    + '<div>DV: ' + (window.__VIDAA_STATE__.dolbyVision || 'N/A') + '</div>'
-                    + '<div>HDR: ' + (window.__VIDAA_STATE__.hdr || 'N/A') + '</div>'
-                    + '<div>Codec: ' + (window.__VIDAA_STATE__.videoCodec || 'N/A') + '</div>'
+                    + '<div>DV: ' + esc(window.__VIDAA_STATE__.dolbyVision || 'N/A') + '</div>'
+                    + '<div>HDR: ' + esc(window.__VIDAA_STATE__.hdr || 'N/A') + '</div>'
+                    + '<div>Codec: ' + esc(window.__VIDAA_STATE__.videoCodec || 'N/A') + '</div>'
                     + '</div>';
             }
             document.body.appendChild(info);
@@ -611,6 +665,7 @@
     }
 
     function checkHealth() {
+        if ((window.location.hash || '').indexOf('#/player/') === 0) return;
         var url = window.__STREMIO_SERVER_URL__;
         if (!url) return;
         var signal = makeTimeoutSignal(5000);
@@ -624,8 +679,9 @@
                 version: data.serverVersion || data.version || null
             };
         }).catch(function() {
+            var start2 = Date.now();
             fetch(url + '/heartbeat', { signal: makeTimeoutSignal(5000) }).then(function() {
-                window.__SERVER_HEALTH__ = { status: 'online', latency: Date.now() - start, version: null };
+                window.__SERVER_HEALTH__ = { status: 'online', latency: Date.now() - start2, version: null };
             }).catch(function() {
                 window.__SERVER_HEALTH__ = { status: 'offline', latency: null, version: null };
             });
@@ -649,12 +705,20 @@
             location.reload();
         }
     }, 5000);
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            window.__WATCHDOG_PAUSE__ = true;
+        } else {
+            lastTick = Date.now();
+            window.__WATCHDOG_PAUSE__ = false;
+        }
+    });
 })();
 </script>
 <script>
 // Memory pressure monitoring
 (function() {
-    if (!performance || !performance.memory) return;
+    if (typeof performance === 'undefined' || !performance.memory) return;
     setInterval(function() {
         var used = performance.memory.usedJSHeapSize;
         var limit = performance.memory.jsHeapSizeLimit;
@@ -675,7 +739,8 @@
 
     // Register GitHub Pages as trusted domain (enables privileged APIs on future loads)
     try {
-        var domains = Hisense_GetInsecureDomain() || [];
+        var domains = Hisense_GetInsecureDomain();
+        if (!Array.isArray(domains)) domains = [];
         var ghDomain = 'noobygains.github.io';
         var found = false;
         for (var i = 0; i < domains.length; i++) {
@@ -745,7 +810,7 @@
         var btn = document.createElement('button');
         btn.textContent = 'Install';
         btn.style.cssText = 'background:white;color:#7b5bf5;border:none;padding:8px 20px;border-radius:8px;font-weight:700;font-size:0.95rem;cursor:pointer;font-family:inherit;';
-        btn.setAttribute('tabindex', '1');
+        btn.setAttribute('tabindex', '0');
         btn.onfocus = function() { this.style.outline = '3px solid white'; };
         btn.onblur = function() { this.style.outline = 'none'; };
         btn.onclick = function() {
@@ -783,6 +848,62 @@
 })();
 </script>
 <script>
+// Lazy load poster images to reduce memory pressure
+(function() {
+    if (!('IntersectionObserver' in window)) return;
+    var observer = new MutationObserver(function(mutations) {
+        for (var i = 0; i < mutations.length; i++) {
+            var added = mutations[i].addedNodes;
+            for (var j = 0; j < added.length; j++) {
+                if (added[j].nodeType !== 1) continue;
+                var imgs = added[j].querySelectorAll ? added[j].querySelectorAll('img:not([loading])') : [];
+                for (var k = 0; k < imgs.length; k++) {
+                    imgs[k].setAttribute('loading', 'lazy');
+                }
+                if (added[j].tagName === 'IMG' && !added[j].getAttribute('loading')) {
+                    added[j].setAttribute('loading', 'lazy');
+                }
+            }
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+})();
+</script>
+<script>
+// Channel Up/Down quick seek (60s forward/back)
+(function() {
+    document.addEventListener('keydown', function(e) {
+        var code = e.keyCode;
+
+        // Channel Up (427) — skip forward 60s
+        if (code === 427) {
+            var vid = document.querySelector('video');
+            if (vid && (window.location.hash || '').indexOf('#/player/') === 0) {
+                vid.currentTime = Math.min(vid.currentTime + 60, vid.duration || Infinity);
+                var toast = document.createElement('div');
+                toast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);color:white;padding:12px 24px;border-radius:8px;font-size:1.5rem;font-family:PlusJakartaSans,sans-serif;z-index:100000;pointer-events:none;';
+                toast.textContent = '+60s';
+                document.body.appendChild(toast);
+                setTimeout(function() { toast.remove(); }, 1500);
+            }
+        }
+
+        // Channel Down (428) — skip back 60s
+        if (code === 428) {
+            var vid2 = document.querySelector('video');
+            if (vid2 && (window.location.hash || '').indexOf('#/player/') === 0) {
+                vid2.currentTime = Math.max(vid2.currentTime - 60, 0);
+                var toast2 = document.createElement('div');
+                toast2.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);color:white;padding:12px 24px;border-radius:8px;font-size:1.5rem;font-family:PlusJakartaSans,sans-serif;z-index:100000;pointer-events:none;';
+                toast2.textContent = '-60s';
+                document.body.appendChild(toast2);
+                setTimeout(function() { toast2.remove(); }, 1500);
+            }
+        }
+    });
+})();
+</script>
+<script>
     // Detect VIDAA TV with 720p viewport
     setTimeout(function() {
         window.screen720p = false;
@@ -794,7 +915,7 @@
         if (window.screen720p) {
             document.body.style.zoom = '65%';
         }
-    });
+    }, 2000);
 </script>
 
 </html>
