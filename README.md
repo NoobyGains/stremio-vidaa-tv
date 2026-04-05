@@ -5,14 +5,13 @@
 <h1 align="center">Stremio for VIDAA TV</h1>
 
 <p align="center">
-  The classic Stremio Theater v1.9.2 frontend — rebuilt with the latest <strong>v5 WASM core</strong> — hand&#8209;woven together and fully tested on Hisense VIDAA OS.
+  The full Stremio experience on Hisense VIDAA TVs. Built on the Theater v1.9.2 TV frontend with the latest v5 WASM core, reverse-engineered VIDAA integration, and one-click installation.
 </p>
 
 <p align="center">
   <a href="https://noobygains.github.io/stremio-vidaa-tv/"><img src="https://img.shields.io/website?label=GitHub%20Pages&logo=github&up_message=online&down_message=offline&url=https%3A%2F%2Fnoobygains.github.io%2Fstremio-vidaa-tv%2F" alt="Pages status" /></a>
-  <img src="https://img.shields.io/badge/frontend-Theater%20v1.9.2-blue" alt="Frontend version" />
-  <img src="https://img.shields.io/badge/core-stremio--core--web%20v5%20(0.55.0)-purple" alt="Core version" />
   <img src="https://img.shields.io/badge/build-v7-orange" alt="Build version" />
+  <img src="https://img.shields.io/badge/core-stremio--core--web%20v5%20(0.55.0)-purple" alt="Core version" />
   <img src="https://img.shields.io/badge/platform-VIDAA%20OS-green" alt="Platform" />
   <a href="https://github.com/NoobyGains/stremio-vidaa-tv/stargazers"><img src="https://img.shields.io/github/stars/NoobyGains/stremio-vidaa-tv?style=social" alt="GitHub Stars" /></a>
 </p>
@@ -21,35 +20,23 @@
 
 ## What is this?
 
-Stremio dropped official support for the **Theater (TV) frontend** but the newer **v5 WASM core** kept getting updates. This project takes the last working TV-optimised frontend (v1.9.2) and grafts the latest stremio-core-web v5 engine onto it — giving VIDAA TVs a native-feeling Stremio experience with a modern backend.
+Stremio dropped official support for the TV frontend. The official **Stremio Lite** in the VIDAA app store is limited: no community addons, no transcoding, no streaming server support. This project is the full Stremio experience rebuilt for VIDAA TVs.
 
-Every chunk was hand-merged: the original 58 UI/translation/route chunks are preserved while the core Worker, WASM binary and service bridge were rebuilt from the v5 release.
+It takes the original Stremio Theater v1.9.2 frontend (built for D-pad navigation and 10-foot TV UI) and grafts the latest stremio-core-web v5 WASM engine onto it. Every webpack chunk was hand-merged and tested on real hardware. On top of that, deep reverse engineering of the VIDAA browser environment enables native integration that no other build offers.
 
-## Fixes & Improvements
+## Requirements
 
-| Area | What was broken | What this build does |
-|---|---|---|
-| **Search** | VIDAA system keyboard sets `input.value` without firing DOM events — search never triggered | 3-layer fix: value-setter intercept, 250 ms polling fallback, direct URL-hash update as nuclear option |
-| **Playback** | Streams marked `notWebReady` were rejected outright — "Video not supported" on most content | Removed the gate so the browser attempts direct playback; unsupported codecs fall through to transcoding via your streaming server |
-| **Transcoding** | `canPlayStream` was force-true, bypassing the streaming server entirely — HEVC/4K just failed | Restored proper transcoding path so unsupported codecs get transcoded to H.264 HLS |
-| **Channels tab** | Pointed to `/discover/channel` but live TV addons use type `tv` | Fixed route to `/discover/tv` |
-| **Heartbeat loop** | Hard-coded VPS URL caused mixed-content errors on HTTPS; infinite restart loop on failure | Rewired to `127.0.0.1:11470` with max-retry cap and exponential backoff |
-| **Subtitle tracks** | Fetch had no timeout — hung indefinitely on unreachable server | Added 10 s `AbortController` timeout |
-| **Video reload** | Stream comparison was a no-op (`stream !== stream` — always false) | Saves previous stream URL, skips reload on duplicate load events |
-| **Worker errors** | Unhandled Worker crashes silently broke the core | Added try/catch + `onerror` handler |
-| **720p zoom** | Hisense projectors report 720p viewport, UI was clipped | Auto-detects VIDAA + 720p and applies 65% zoom correction |
-| **Caching** | GitHub Pages served stale JS forever | Cache-busting query strings (`?v=5`) on all scripts + no-cache meta tags |
-| **Offline load** | Every visit re-downloaded ~1 MB of JS + WASM from GitHub Pages | Service Worker caches the entire app shell after first load |
-| **Server URL** | Streaming server address was hard-coded — required a rebuild to change | Configurable via `?server=` query parameter |
-| **DV Profile 7** | Dolby Vision Profile 7 streams showed a black screen with no error | Smart stall detection warns only on actual failure. Tested on PX1HE: DV+HDR MKV plays natively at 4K, MP4 container not supported |
-| **Server URL** | `?server=` only affected heartbeat, not actual stream routing | URL now syncs directly to the WASM core on startup and auto-reloads when changed in Settings |
-| **Error messages** | Generic "video not supported" for all codec failures | Codec-specific, actionable messages that tell the user what to do |
+- **Hisense or Toshiba TV** running **VIDAA OS**
+- A **Stremio account** ([stremio.com](https://www.stremio.com/), free)
+- **Real-Debrid** or similar debrid service (recommended)
+
+That's it. No streaming server needed for most users. If you use Real-Debrid with Torrentio, streams are direct H.264/HEVC links that your TV plays natively.
 
 ## Installation
 
 ### Method 1: One-Click Installer (recommended)
 
-The easiest way to install. Requires a PC on the same network as your TV.
+Requires a PC on the same network as your TV. No Python dependencies needed beyond the standard library.
 
 1. Download and run the installer:
    ```bash
@@ -57,123 +44,121 @@ The easiest way to install. Requires a PC on the same network as your TV.
    cd stremio-vidaa-tv/installer
    python server.py
    ```
-2. On your **TV**: go to Settings > Network > DNS and set it to the IP shown by the script
+2. On your **TV**: go to **Settings > Network > DNS** and set it to the IP shown by the script
 3. On your **TV**: open the **Internet Browser** (Home > Apps > look for "Browser" or the globe icon, check "All Apps" if you don't see it) and go to `https://vidaahub.com`
 4. Press **Install Stremio**
 5. Revert DNS to automatic and restart your TV
 6. Stremio appears in your app launcher permanently
 
-The installer also registers GitHub Pages as a trusted domain, so future updates work automatically.
+You only need to do this once. The installer registers your TV to receive updates automatically from GitHub Pages.
 
-### Method 2: Direct URL (if already sideloaded)
+### Method 2: Direct URL
 
-If you've previously sideloaded any app via DNS spoofing:
+If you already have access to the TV browser:
 
-1. On your TV, press the **Home** button on the remote
-2. Navigate to the **VIDAA App Store** or **Apps** row
-3. Find and open the **Internet Browser** (it may be labelled "Browser" or have a globe icon — if you don't see it, check "All Apps" or search for "Browser")
-4. In the address bar, type:
+1. On your TV, open the **Internet Browser** (Home > Apps > look for "Browser" or the globe icon)
+2. Navigate to:
    ```
    https://noobygains.github.io/stremio-vidaa-tv/
    ```
-5. The app loads and will prompt you to "Install to Launcher" on first run
+3. The app loads and will prompt you to install to your launcher on first run
 
-### Method 3: Self-hosted with Docker
-
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY . .
-EXPOSE 8000
-CMD ["python", "-m", "http.server", "8000"]
-```
+### Method 3: Self-hosted
 
 ```bash
 git clone https://github.com/NoobyGains/stremio-vidaa-tv.git
 cd stremio-vidaa-tv
-docker-compose up -d
+docker build -t stremio-vidaa .
+docker run -d -p 8000:8000 stremio-vidaa
 ```
 
-Then set `appUrl` in the sideload script to `http://<your-ip>:8000`.
+Then open `http://<your-pc-ip>:8000` on your TV.
 
-## Do I Need a Streaming Server?
+## Streaming Server (optional)
 
-**Most users: no.** If you use **Real-Debrid** (or similar debrid services) with Torrentio, your streams are direct H.264/HEVC links from their CDN. Your TV plays these natively — no extra server needed.
+**Most users don't need this.** With Real-Debrid, your TV plays streams directly. No server required.
 
-**You need a streaming server if:**
-- You stream **raw torrents** without a debrid service
-- You play **AV1 content** (not supported on most VIDAA TVs)
-- You want a fallback for codecs your TV can't handle natively — the server transcodes them to H.264
+You only need a streaming server if you:
+- Stream raw torrents without a debrid service
+- Play AV1 content (not supported on VIDAA hardware)
+- Want automatic transcoding for codecs your TV can't handle
 
-### What is a streaming server?
+A streaming server is a separate program that runs on your network (PC, NAS, Raspberry Pi) and converts unsupported video formats to H.264 on the fly.
 
-It's a separate program ([stremio-server](https://github.com/Stremio/stremio-server)) that runs on another device on your network — a PC, a NAS, a Raspberry Pi, or a VPS. When your TV hits a video format it can't decode, the streaming server converts it to H.264 on the fly and sends the converted stream to your TV.
-
-### Setting it up
-
-**Step 1:** Run stremio-server on a device on your network:
+**Setup:**
 
 ```bash
-# Docker (easiest)
 docker run -d --name stremio-server -p 11470:11470 stremio/server
 ```
 
-Or install [Stremio desktop](https://www.stremio.com/downloads) on a PC — it includes the streaming server automatically.
+Or install [Stremio desktop](https://www.stremio.com/downloads) on a PC, which includes the server automatically.
 
-**Step 2:** Tell the app where your server is by adding `?server=` to the URL once:
+**Connect it to the app** by adding `?server=` to the URL once:
 
 ```
 https://noobygains.github.io/stremio-vidaa-tv/?server=http://192.168.1.50:11470
 ```
 
-Replace `192.168.1.50` with the IP of the device running stremio-server. The setting is saved automatically — you only need to do this once.
+Replace `192.168.1.50` with your server's IP. The setting is saved automatically. You can also change it inside the app at **Settings > Server > Edit URL**.
 
-You can also change the server URL inside the app: **Settings > Server > Edit URL**.
+## Tested Codec Support (Hisense PX1HE / 100L5H)
 
-## What's New in v7
+Tested via live hardware scanning and real stream playback:
+
+| Format | Status | Notes |
+|---|---|---|
+| H.264 (all profiles, up to 4K) | Plays | Native browser decode |
+| HEVC/H.265 (Main, Main10, 4K) | Plays | Native browser decode |
+| HEVC 10-bit | Plays | Tested with real content |
+| Dolby Vision + HDR (MKV) | Plays | Tested at 4K. Native decode, no transcoding needed |
+| Dolby Vision + HDR + Atmos (MKV) | Plays | Full DV with Atmos audio works |
+| Dolby Vision (MP4 container) | Does not play | Browser crashes or hangs. Use MKV sources |
+| VP8 / VP9 | Plays | Native browser decode |
+| AV1 | Not supported | Requires streaming server for transcoding |
+| Content above 4K (4320p, 8K) | Black screen | Exceeds hardware decode limit |
+| AAC, AC-3, EAC-3, Opus, FLAC | Plays | All common audio formats supported |
+
+DRM: Widevine, PlayReady, and ClearKey are all supported.
+
+> Other VIDAA TV models may have different codec support. These results are from a PX1HE running VIDAA U06.29 with a MediaTek MT9900 chipset.
+
+## Features
 
 | Feature | Description |
 |---|---|
-| **Server URL fix** | `?server=` now properly syncs to the WASM core — streams actually route through your configured server |
-| **Auto-reload** | Changing the server URL in Settings automatically reloads the connection — no manual reload needed |
-| **Dolby Vision** | DV+HDR MKV streams play natively at 4K (tested on PX1HE). MP4 DV not supported. Smart stall detection warns only on actual failure |
-| **Better error messages** | Codec-specific, actionable error messages instead of generic "video not supported" |
-| **Resolution indicator** | Shows current playback resolution (4K/1080p/720p/etc.) in the player |
-| **Splash screen** | Stremio-branded loading screen while WASM initialises |
-| **Remote shortcuts** | VIDAA color buttons mapped: Red=quality, Green=server health, Blue=force transcode, Info=stream details |
-| **Server health** | Real-time server status with latency monitoring |
-| **Watchdog** | Auto-recovers from UI freezes (>15s) |
-| **Memory monitor** | Warns on high memory usage to prevent TV browser crashes |
+| **Full addon support** | All community addons work, including Torrentio with Real-Debrid |
+| **Dolby Vision playback** | DV+HDR streams in MKV play natively at 4K. Smart stall detection warns only on actual failure |
+| **Server URL sync** | `?server=` properly syncs to the WASM core. Auto-reloads when changed in Settings |
+| **VIDAA keyboard fix** | 3-layer fix for the VIDAA on-screen keyboard not triggering search |
+| **Resolution indicator** | Shows current playback quality (4K/1080p/720p) in the player |
+| **Splash screen** | Loading screen with progress bar while WASM initialises |
+| **Error messages** | Codec-specific, actionable messages instead of generic "video not supported" |
+| **One-click install** | Permanent launcher icon via the included installer |
+| **Service Worker** | Caches the entire app for instant boot after first load |
+| **720p zoom fix** | Auto-corrects viewport scaling on projectors and 720p-reporting TVs |
+| **Watchdog** | Auto-recovers from UI freezes |
 
 ## Remote Control Shortcuts
 
 | Button | Action |
 |---|---|
 | **Red** | Toggle resolution indicator |
-| **Green** | Show/hide server health overlay |
-| **Blue** | Force transcode current stream (useful for unsupported codecs) |
-| **Info / Display** | Show detailed stream info (resolution, buffer, duration, DV status) |
+| **Green** | Show/hide server health overlay (status, latency, version) |
+| **Blue** | Force transcode current stream |
+| **Info / Display** | Show stream details (resolution, buffer, codec, VIDAA device info) |
 
 ## Troubleshooting
 
 | Problem | Solution |
 |---|---|
-| **"Install" button does nothing on vidaahub.com** | Enable Developer Mode: TV Settings → System → About → press **1234** on the remote → toggle Developer Mode on. Ensure the sideload server script is running on a PC on the same network. |
-| **"Server Offline" in Settings** | Your streaming server must be running on a device on the same network. Test by visiting `http://<server-ip>:11470/heartbeat` in a browser. Use `?server=http://<ip>:11470` to configure. |
-| **Black screen during playback** | Could be a DV stream in MP4 container (not supported), content above 4K resolution, or an unsupported codec. The app now detects stalled playback and offers options. DV+HDR in MKV at 4K plays natively on tested hardware (PX1HE). |
-| **Playback stops after ~2 minutes** | Usually a heartbeat/server connection issue. Make sure your streaming server is reachable and the URL is correctly configured. v7 fixes the auto-reload after URL changes. |
-| **Search keyboard not working** | Ensure you're on v7+ (check the version number in the bottom-right corner). The VIDAA keyboard fix is built in. |
-| **App shows old version after update** | The service worker may be serving a cached copy. Go to Settings → Clear Data, or add `?v=new` to the URL to force a refresh. |
-| **720p UI is clipped or too large** | The app auto-detects 720p VIDAA devices and applies a 65% zoom correction. If this isn't working, your TV may not be reporting the viewport correctly. |
-
-## Under the Hood
-
-This build is backed by deep reverse engineering of the VIDAA OS browser environment. Through live hardware scanning, we've mapped the full codec pipeline, HDR/Dolby Vision capabilities, and native API surface of VIDAA devices — enabling features no other VIDAA Stremio build offers:
-
-- **Real hardware codec detection** — the app knows exactly what your TV can and can't play, and acts accordingly
-- **Dolby Vision awareness** — DV+HDR MKV streams play natively at 4K (tested on PX1HE, MP4 not supported). Smart stall detection handles failures gracefully
-- **Native VIDAA integration** — trusted domain registration, app launcher installation, real-time video state observers
-- **One-click installation** — no complex sideloading scripts, just run the installer and press a button
+| **Installer: "Install" button does nothing** | Enable Developer Mode on your TV: Settings > System > About > press **1234** on the remote > toggle Developer Mode on. Make sure the installer script is still running on your PC. |
+| **Can't find the browser on TV** | The Internet Browser may be hidden. Go to Home > Apps > All Apps and look for "Browser" or a globe icon. |
+| **"Server Offline" in Settings** | Your streaming server must be running on a device on the same network. Test by visiting `http://<server-ip>:11470/heartbeat` in a browser. Most Real-Debrid users don't need a server at all. |
+| **Black screen during playback** | Could be: DV content in MP4 container (use MKV sources instead), content above 4K resolution, or an unsupported codec. The app detects stalled playback and offers options. |
+| **Playback stops after a few minutes** | Usually a server connection issue. If you don't use a streaming server, this shouldn't happen. If you do, check that the server URL is correct in Settings. |
+| **Search keyboard doesn't work** | Check the version number in the bottom-right corner. If it doesn't show v7, clear the browser cache or add `?v=new` to the URL. |
+| **App shows old version** | The service worker may be caching an old copy. Go to Settings > Clear Data, or clear the TV browser cache. |
+| **720p UI is clipped** | The app auto-detects 720p viewports and applies zoom correction. If it's not working, your TV may report a non-standard viewport size. |
 
 ## How It Works
 
@@ -185,7 +170,7 @@ This build is backed by deep reverse engineering of the VIDAA OS browser environ
 │  addons, login, details, video, etc.     │
 ├──────────────────────────────────────────┤
 │  v7 Patch Layer (index.html)             │
-│  Server sync, DV detection, VIDAA API    │
+│  Server sync, codec detection, VIDAA API │
 │  integration, install-to-launcher, QoL   │
 ├──────────────────────────────────────────┤
 │  v5 Core Bridge (core.chunk.js)          │
@@ -202,14 +187,17 @@ This build is backed by deep reverse engineering of the VIDAA OS browser environ
 └──────────────────────────────────────────┘
 ```
 
-## Requirements
+The v7 patch layer sits between the original UI and the core engine. All patches are isolated in `index.html` as self-contained scripts, with two surgical one-line edits in the bundled chunks for error handling and transcoding hooks. The WASM binary and original UI chunks are untouched.
 
-- **Hisense / Toshiba TV** running **VIDAA OS** (required)
-- A **Stremio account** at [stremio.com](https://www.stremio.com/) (required, free)
-- **Real-Debrid** or similar debrid service (recommended for best streaming experience)
-- A Stremio streaming server (optional, only needed for transcoding HEVC/4K/DV content without debrid)
+## Under the Hood
 
-> Most users with Real-Debrid do not need a streaming server. The v5 WASM core handles everything in-browser.
+This build is backed by reverse engineering of the VIDAA OS browser environment. Through live hardware scanning of a Hisense PX1HE, we mapped 110+ VIDAA JavaScript APIs, the full codec pipeline, HDR/Dolby Vision capabilities, DRM support, and the native app installation system.
+
+Key discoveries:
+- DV+HDR content in MKV containers plays natively at 4K in the VIDAA browser (no transcoding required)
+- The `Hisense_installApp` API enables permanent launcher installation from trusted domains
+- Real-time video state observers (`Hisense_RegisterObserver`) provide live codec and HDR status
+- The `omi_platform.sendPlatformMessage` interface accepts native player handoff commands
 
 ## Credits
 
