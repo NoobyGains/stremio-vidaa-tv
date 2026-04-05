@@ -96,15 +96,39 @@ docker-compose up -d
 
 Then set `appUrl` in the sideload script to `http://<your-ip>:8000`.
 
-## Custom Streaming Server
+## Do I Need a Streaming Server?
 
-By default the app talks to `127.0.0.1:11470` (localhost). To point it at a remote streaming server, add a `?server=` query parameter:
+**Most users: no.** If you use **Real-Debrid** (or similar debrid services) with Torrentio, your streams are direct H.264/HEVC links from their CDN. Your TV plays these natively — no extra server needed.
+
+**You need a streaming server if:**
+- You stream **raw torrents** without a debrid service
+- You play **AV1 content** (not supported on most VIDAA TVs)
+- You want a fallback for codecs your TV can't handle natively — the server transcodes them to H.264
+
+### What is a streaming server?
+
+It's a separate program ([stremio-server](https://github.com/Stremio/stremio-server)) that runs on another device on your network — a PC, a NAS, a Raspberry Pi, or a VPS. When your TV hits a video format it can't decode, the streaming server converts it to H.264 on the fly and sends the converted stream to your TV.
+
+### Setting it up
+
+**Step 1:** Run stremio-server on a device on your network:
+
+```bash
+# Docker (easiest)
+docker run -d --name stremio-server -p 11470:11470 stremio/server
+```
+
+Or install [Stremio desktop](https://www.stremio.com/downloads) on a PC — it includes the streaming server automatically.
+
+**Step 2:** Tell the app where your server is by adding `?server=` to the URL once:
 
 ```
 https://noobygains.github.io/stremio-vidaa-tv/?server=http://192.168.1.50:11470
 ```
 
-The setting is saved to `localStorage` — you only need to pass it once.
+Replace `192.168.1.50` with the IP of the device running stremio-server. The setting is saved automatically — you only need to do this once.
+
+You can also change the server URL inside the app: **Settings > Server > Edit URL**.
 
 ## What's New in v7
 
