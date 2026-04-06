@@ -629,7 +629,7 @@
                                         onClick: () => {
                                             var now = localStorage.getItem(lsKey) !== 'true';
                                             localStorage.setItem(lsKey, String(now));
-                                            v({}); // trigger SolidJS re-render
+                                            v({ _vidaaToggle: Date.now() }); // trigger SolidJS re-render with unique value
                                             if (window.__vidaaSettingsItems) {
                                                 var c = window.__vidaaSettingsItems.find(function(i) { return i.lsKey === lsKey; });
                                                 if (c && c.onToggle) c.onToggle(now);
