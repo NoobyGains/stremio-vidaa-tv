@@ -616,51 +616,57 @@
                     }, {
                         label: "VIDAA",
                         icon: "about",
-                        options: [{
-                            label: "Force Stereo",
-                            checked: () => localStorage.getItem('stremio_force_stereo') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_force_stereo') !== 'true'; localStorage.setItem('stremio_force_stereo', String(v)); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_force_stereo'}); if (c&&c.onToggle) c.onToggle(v); } }
-                        }, {
-                            label: "Audio Delay",
-                            checked: () => localStorage.getItem('stremio_audio_delay_enabled') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_audio_delay_enabled') !== 'true'; localStorage.setItem('stremio_audio_delay_enabled', String(v)); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_audio_delay_enabled'}); if (c&&c.onToggle) c.onToggle(v); } }
-                        }, {
-                            label: "Auto-Play Stream",
-                            checked: () => localStorage.getItem('stremio_autoplay_best') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_autoplay_best') !== 'true'; localStorage.setItem('stremio_autoplay_best', String(v)); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_autoplay_best'}); if (c&&c.onToggle) c.onToggle(v); } }
-                        }, {
-                            label: "Mark Season",
-                            checked: () => localStorage.getItem('stremio_mark_season') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_mark_season') !== 'true'; localStorage.setItem('stremio_mark_season', String(v)); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_mark_season'}); if (c&&c.onToggle) c.onToggle(v); } }
-                        }, {
-                            label: "Subtitle Drift Fix",
-                            checked: () => localStorage.getItem('stremio_sub_drift_fix') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_sub_drift_fix') !== 'true'; localStorage.setItem('stremio_sub_drift_fix', String(v)); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_sub_drift_fix'}); if (c&&c.onToggle) c.onToggle(v); } }
-                        }, {
-                            label: "720p Zoom",
-                            checked: () => localStorage.getItem('stremio_720p_zoom') !== 'false',
-                            onClick: () => { var v = localStorage.getItem('stremio_720p_zoom') === 'false'; localStorage.setItem('stremio_720p_zoom', v ? 'true' : 'false'); if (v) { if (window.__applyZoom) window.__applyZoom(); } else { if (window.__removeZoom) window.__removeZoom(); } }
-                        }, {
-                            label: "Torrent Streaming",
-                            checked: () => localStorage.getItem('stremio_webtorrent_enabled') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_webtorrent_enabled') !== 'true'; localStorage.setItem('stremio_webtorrent_enabled', String(v)); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_webtorrent_enabled'}); if (c&&c.onToggle) c.onToggle(v); } }
-                        }, {
-                            label: "Low Memory Mode",
-                            checked: () => localStorage.getItem('stremio_low_memory') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_low_memory') !== 'true'; localStorage.setItem('stremio_low_memory', String(v)); }
-                        }, {
-                            label: "Auto-Rebuffer on Stall",
-                            checked: () => localStorage.getItem('stremio_auto_rebuffer') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_auto_rebuffer') !== 'true'; localStorage.setItem('stremio_auto_rebuffer', String(v)); }
-                        }, {
-                            label: "Stream Stats Overlay",
-                            checked: () => localStorage.getItem('stremio_stream_stats') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_stream_stats') !== 'true'; localStorage.setItem('stremio_stream_stats', String(v)); }
-                        }, {
-                            disabled: () => "Web" === p.name,
-                            label: "Exit Stremio",
-                            onClick: () => { if (window.__exitApp) window.__exitApp(); else window.dispatchEvent(new Event("quit")); }
-                        }]
+                        options: (function() {
+                            // Helper: create a SolidJS-compatible reactive toggle
+                            // localStorage is NOT reactive, so we use a closure variable
+                            // that gets toggled on click, making checked() return the new value
+                            function makeToggle(label, lsKey, onToggle) {
+                                var state = localStorage.getItem(lsKey) === 'true';
+                                return {
+                                    label: label,
+                                    options: [{
+                                        checked: () => state,
+                                        onClick: () => {
+                                            state = !state;
+                                            localStorage.setItem(lsKey, String(state));
+                                            if (onToggle) onToggle(state);
+                                            if (window.__vidaaSettingsItems) {
+                                                var c = window.__vidaaSettingsItems.find(function(i) { return i.lsKey === lsKey; });
+                                                if (c && c.onToggle) c.onToggle(state);
+                                            }
+                                        }
+                                    }]
+                                };
+                            }
+                            return [
+                                makeToggle("Force Stereo", "stremio_force_stereo"),
+                                makeToggle("Audio Delay", "stremio_audio_delay_enabled"),
+                                makeToggle("Auto-Play Stream", "stremio_autoplay_best"),
+                                makeToggle("Mark Season", "stremio_mark_season"),
+                                makeToggle("Subtitle Drift Fix", "stremio_sub_drift_fix"),
+                                {
+                                    label: "720p Zoom",
+                                    options: [{
+                                        checked: function() { return localStorage.getItem('stremio_720p_zoom') !== 'false'; },
+                                        onClick: function() {
+                                            var v = localStorage.getItem('stremio_720p_zoom') === 'false';
+                                            localStorage.setItem('stremio_720p_zoom', v ? 'true' : 'false');
+                                            if (v) { if (window.__applyZoom) window.__applyZoom(); }
+                                            else { if (window.__removeZoom) window.__removeZoom(); }
+                                        }
+                                    }]
+                                },
+                                makeToggle("Torrent Streaming", "stremio_webtorrent_enabled"),
+                                makeToggle("Low Memory Mode", "stremio_low_memory"),
+                                makeToggle("Auto-Rebuffer", "stremio_auto_rebuffer"),
+                                makeToggle("Stream Stats", "stremio_stream_stats"),
+                                {
+                                    disabled: () => "Web" === p.name,
+                                    label: "Exit Stremio",
+                                    onClick: () => { if (window.__exitApp) window.__exitApp(); else window.dispatchEvent(new Event("quit")); }
+                                }
+                            ];
+                        })()
                     }]
                 };
             var m = o(43),
