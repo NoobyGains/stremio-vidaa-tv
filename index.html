@@ -2149,8 +2149,9 @@
 </script>
 <script>
 // ═══════════════════════════════════════════════════════════════════════
-// VIDAA Settings — Inline Menu System
-// Injects "VIDAA" as a category item in the native Settings left column.
+// VIDAA Settings — Interface Section Injection
+// Injects all VIDAA toggles directly into the Interface sub-menu,
+// right below the "Background Blur" option.
 // All VIDAA toggles register via window.__registerVidaaSettingsItem(cfg).
 // Legacy window.__registerCommunityToggle is aliased for compatibility.
 // ═══════════════════════════════════════════════════════════════════════
@@ -2158,7 +2159,6 @@
     'use strict';
 
     var LOG = '[settings]';
-    var VIDAA_ID = 'vidaa-settings-item';
     var registeredItems = [];
 
     function log() {
@@ -2168,11 +2168,9 @@
     }
 
     // ─── Public API ────────────────────────────────────────────────
-    // cfg: { id, type ('toggle'|'slider'), label, description, lsKey, onToggle, extraContent }
     window.__vidaaSettingsItems = registeredItems;
 
     window.__registerVidaaSettingsItem = function(cfg) {
-        // Avoid duplicates
         for (var i = 0; i < registeredItems.length; i++) {
             if (registeredItems[i].id === cfg.id) return;
         }
@@ -2181,7 +2179,6 @@
     };
 
     // Backward-compat alias for the old community toggle API
-    // cfg: { id, lsKey, title, description, onToggle, extraContent }
     window.__registerCommunityToggle = function(cfg) {
         window.__registerVidaaSettingsItem({
             id: cfg.id,
@@ -2194,206 +2191,124 @@
         });
     };
 
-    // ─── Right-column Panel ────────────────────────────────────────
-    function showVidaaPanel() {
-        // Find the settings inner container (holds left + right columns)
-        var innerEl = document.querySelector('[class*="inner-"]');
-        if (!innerEl) return;
-        var rightCol = innerEl.children[1];
-        if (!rightCol) return;
+    // ─── Inject toggles after Background Blur ─────────────────────
+    var injected = false;
 
-        // Save original right column content (once)
-        if (!rightCol.getAttribute('data-vidaa-saved')) {
-            rightCol.setAttribute('data-vidaa-saved', 'true');
-            rightCol.setAttribute('data-vidaa-original', rightCol.innerHTML);
-        }
+    setInterval(function() {
+        if (location.hash.indexOf('#/settings') !== 0) { injected = false; return; }
+        if (injected) return;
 
-        // Derive class names from existing elements
-        var optionClass = '';
-        var labelClass = '';
-        var toggleClass = '';
-        var scrollClass = '';
-        var listClass = '';
+        // Find Background Blur option in the right column
+        var allOptions = document.querySelectorAll('[class*="option-"]');
+        var bgBlurOption = null;
 
-        var sc = rightCol.querySelector('[class*="scroll-container"]');
-        if (sc) scrollClass = sc.className;
-        var li = rightCol.querySelector('[class*="list-"]');
-        if (li) listClass = li.className;
-
-        var existingOpt = document.querySelector('[class*="option-"][class*="pCk4g"]') ||
-                          document.querySelector('[class*="option-"]');
-        if (existingOpt) optionClass = existingOpt.className.replace(/\s*selected-\w+/g, '').trim();
-
-        var existingLabel = document.querySelector('[class*="label-"][class*="ZUqct"]') ||
-                            document.querySelector('[class*="label-"]');
-        if (existingLabel) labelClass = existingLabel.className;
-
-        var existingToggle = document.querySelector('[class*="toggle-"][class*="EKrug"]') ||
-                             document.querySelector('[class*="toggle-"]');
-        if (existingToggle) toggleClass = existingToggle.className.replace(' checked', '').trim();
-
-        // Fallback to known class names
-        if (!optionClass) optionClass = 'option-pCk4g';
-        if (!labelClass) labelClass = 'label-ZUqct';
-        if (!toggleClass) toggleClass = 'toggle-EKrug';
-
-        // Build panel HTML
-        var html = '<div class="' + scrollClass + '">';
-        html += '<div class="' + listClass + '" id="vidaa-toggles-list">';
-
-        for (var i = 0; i < registeredItems.length; i++) {
-            var cfg = registeredItems[i];
-            var enabled = false;
-            try { enabled = localStorage.getItem(cfg.lsKey) === 'true'; } catch(e) {}
-            html += '<div class="' + optionClass + '" tabindex="0" data-vidaa-toggle="' + cfg.id + '">';
-            html += '<div class="' + labelClass + '">' + cfg.label + '</div>';
-            html += '<div class="' + toggleClass + (enabled ? ' checked' : '') + '"></div>';
-            html += '</div>';
-
-            // Extra content rows (e.g. audio delay slider)
-            if (cfg.extraContent) {
-                try {
-                    var extra = cfg.extraContent(enabled);
-                    if (extra && extra.outerHTML) html += extra.outerHTML;
-                } catch(e) {}
+        for (var i = 0; i < allOptions.length; i++) {
+            var text = allOptions[i].textContent || '';
+            if (text.toLowerCase().indexOf('background') !== -1 && text.toLowerCase().indexOf('blur') !== -1) {
+                bgBlurOption = allOptions[i];
+                break;
             }
         }
 
-        // Exit Stremio at the bottom
-        html += '<div class="' + optionClass + '" tabindex="0" data-vidaa-exit="true" style="margin-top:1.5rem;">';
-        html += '<div class="' + labelClass + '" style="color:#f87171;">Exit Stremio</div>';
-        html += '</div>';
+        if (!bgBlurOption) return;
+        if (document.getElementById('vidaa-injected-marker')) return;
 
-        html += '</div></div>';
-        rightCol.innerHTML = html;
-        rightCol.setAttribute('data-vidaa-panel', 'true');
+        var container = bgBlurOption.parentNode;
+        if (!container) return;
 
-        // Wire toggle clicks
-        var toggleEls = rightCol.querySelectorAll('[data-vidaa-toggle]');
-        for (var j = 0; j < toggleEls.length; j++) {
-            (function(el) {
-                var id = el.getAttribute('data-vidaa-toggle');
-                var cfg = null;
-                for (var k = 0; k < registeredItems.length; k++) {
-                    if (registeredItems[k].id === id) { cfg = registeredItems[k]; break; }
-                }
-                if (!cfg) return;
+        // Get toggle class from Background Blur (strip any checked state)
+        var toggleEl = bgBlurOption.querySelector('[class*="toggle-"]');
+        var toggleClass = toggleEl ? toggleEl.className.replace(/\bchecked\b/g, '').trim() : 'toggle-EKrug';
 
+        // Marker to prevent double-injection
+        var marker = document.createElement('div');
+        marker.id = 'vidaa-injected-marker';
+        marker.style.display = 'none';
+        container.appendChild(marker);
+
+        var items = window.__vidaaSettingsItems || [];
+        var insertAfter = bgBlurOption;
+
+        for (var j = 0; j < items.length; j++) {
+            var cfg = items[j];
+            var enabled = false;
+            try { enabled = localStorage.getItem(cfg.lsKey) === 'true'; } catch(e) {}
+
+            var clone = bgBlurOption.cloneNode(true);
+            clone.id = 'vidaa-opt-' + cfg.id;
+
+            var cloneLabel = clone.querySelector('[class*="label-"]');
+            if (cloneLabel) cloneLabel.textContent = cfg.label;
+
+            var cloneToggle = clone.querySelector('[class*="toggle-"]');
+            if (cloneToggle) {
+                cloneToggle.className = toggleClass + (enabled ? ' checked' : '');
+            }
+
+            (function(el, config, togEl) {
                 function doToggle() {
-                    var now = localStorage.getItem(cfg.lsKey) !== 'true';
-                    try { localStorage.setItem(cfg.lsKey, now ? 'true' : 'false'); } catch(e) {}
-                    var tog = el.querySelector('[class*="toggle-"]');
-                    if (tog) {
-                        if (now) tog.classList.add('checked');
-                        else tog.classList.remove('checked');
+                    var now = localStorage.getItem(config.lsKey) !== 'true';
+                    localStorage.setItem(config.lsKey, now ? 'true' : 'false');
+                    if (togEl) {
+                        if (now) togEl.classList.add('checked');
+                        else togEl.classList.remove('checked');
                     }
-                    if (cfg.onToggle) cfg.onToggle(now);
+                    if (config.onToggle) config.onToggle(now);
+                    log('Toggled ' + config.label + ':', now);
                 }
 
-                el.addEventListener('click', doToggle);
+                el.onclick = null;
+                el.addEventListener('click', function(e) { e.stopPropagation(); doToggle(); });
                 el.addEventListener('keydown', function(e) {
                     if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); doToggle(); }
                 });
                 el.addEventListener('focus', function() { el.setAttribute('focused', ''); });
                 el.addEventListener('blur', function() { el.removeAttribute('focused'); });
-            })(toggleEls[j]);
-        }
+            })(clone, cfg, cloneToggle);
 
-        // Wire audio delay D-pad controls (re-attach extraContent logic)
-        for (var m = 0; m < registeredItems.length; m++) {
-            var item = registeredItems[m];
-            if (item.extraContent) {
-                var existingEnabled = false;
-                try { existingEnabled = localStorage.getItem(item.lsKey) === 'true'; } catch(e) {}
-                var extraEl = item.extraContent(existingEnabled);
-                if (extraEl && extraEl.id) {
-                    var placeholder = rightCol.querySelector('#' + extraEl.id);
-                    if (placeholder && placeholder.parentNode) {
-                        placeholder.parentNode.replaceChild(extraEl, placeholder);
-                    }
-                }
+            clone.setAttribute('tabindex', '0');
+
+            if (insertAfter.nextSibling) {
+                container.insertBefore(clone, insertAfter.nextSibling);
+            } else {
+                container.appendChild(clone);
             }
+            insertAfter = clone;
         }
 
-        // Wire exit click
-        var exitEl = rightCol.querySelector('[data-vidaa-exit]');
-        if (exitEl) {
-            exitEl.addEventListener('click', function() { if (window.__exitApp) window.__exitApp(); });
-            exitEl.addEventListener('keydown', function(e) {
-                if (e.keyCode === 13 || e.keyCode === 32) { if (window.__exitApp) window.__exitApp(); }
-            });
-            exitEl.addEventListener('focus', function() { this.setAttribute('focused', ''); });
-            exitEl.addEventListener('blur', function() { this.removeAttribute('focused'); });
+        // Exit Stremio button at the end
+        var exitClone = bgBlurOption.cloneNode(true);
+        exitClone.id = 'vidaa-opt-exit';
+        var exitLabel = exitClone.querySelector('[class*="label-"]');
+        if (exitLabel) { exitLabel.textContent = 'Exit Stremio'; exitLabel.style.color = '#f87171'; }
+        var exitToggle = exitClone.querySelector('[class*="toggle-"]');
+        if (exitToggle) exitToggle.remove();
+        exitClone.setAttribute('tabindex', '0');
+        exitClone.style.marginTop = '1rem';
+        exitClone.onclick = null;
+        exitClone.addEventListener('click', function() { if (window.__exitApp) window.__exitApp(); });
+        exitClone.addEventListener('keydown', function(e) { if (e.keyCode === 13) { if (window.__exitApp) window.__exitApp(); } });
+        exitClone.addEventListener('focus', function() { exitClone.setAttribute('focused', ''); });
+        exitClone.addEventListener('blur', function() { exitClone.removeAttribute('focused'); });
+
+        if (insertAfter.nextSibling) {
+            container.insertBefore(exitClone, insertAfter.nextSibling);
+        } else {
+            container.appendChild(exitClone);
         }
 
-        log('VIDAA panel rendered with', registeredItems.length, 'items');
-    }
-
-    // ─── Left-column Menu Item Injection ──────────────────────────
-    setInterval(function() {
-        if (location.hash.indexOf('#/settings') !== 0) return;
-        if (document.getElementById(VIDAA_ID)) return;
-
-        // Find the left column list (first list in settings)
-        var lists = document.querySelectorAll('[class*="list-"]');
-        if (!lists.length) return;
-        var leftList = lists[0];
-        if (!leftList) return;
-
-        // Clone an existing option to get the exact structure
-        var existingOption = leftList.querySelector('[class*="option-"]');
-        if (!existingOption) existingOption = leftList.children[0];
-        if (!existingOption) return;
-
-        var vidaaItem = existingOption.cloneNode(true);
-        vidaaItem.id = VIDAA_ID;
-
-        // Set label to "VIDAA"
-        var labelEl = vidaaItem.querySelector('[class*="label-"]');
-        if (labelEl) labelEl.textContent = 'VIDAA';
-
-        // Replace icon with a TV icon
-        var iconEl = vidaaItem.querySelector('svg');
-        if (iconEl) {
-            iconEl.innerHTML = '<rect x="3" y="3" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 21h8M12 17v4" fill="none" stroke="currentColor" stroke-width="2"/>';
-        }
-
-        // Remove any selected state from the clone
-        var classes = vidaaItem.className.split(' ');
-        var cleanClasses = classes.filter(function(c) { return c.indexOf('selected-') !== 0; });
-        vidaaItem.className = cleanClasses.join(' ').trim();
-
-        vidaaItem.setAttribute('tabindex', '0');
-        vidaaItem.addEventListener('click', function(e) {
-            e.stopPropagation();
-            showVidaaPanel();
-        });
-        vidaaItem.addEventListener('keydown', function(e) {
-            if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); showVidaaPanel(); }
-        });
-        vidaaItem.addEventListener('focus', function() { this.setAttribute('focused', ''); });
-        vidaaItem.addEventListener('blur', function() { this.removeAttribute('focused'); });
-
-        leftList.appendChild(vidaaItem);
-        log('VIDAA menu item injected into settings left column');
+        injected = true;
+        log('Injected', items.length, 'toggles after Background Blur');
     }, 1000);
 
-    // ─── Restore native right column when leaving settings ─────────
-    // React will re-render the right column naturally when a native category
-    // is clicked, so no explicit restore is needed — just clean up the flag.
-    var lastSettingsHash = '';
+    // Reset injection flag when Interface options disappear (user navigates away)
     setInterval(function() {
-        var hash = window.location.hash || '';
-        if (hash.indexOf('#/settings') !== 0) {
-            lastSettingsHash = '';
-            return;
+        if (!document.getElementById('vidaa-injected-marker')) {
+            injected = false;
         }
-        // If a native category item is clicked React re-renders the right col,
-        // which clears the data-vidaa-panel attribute automatically.
-        lastSettingsHash = hash;
-    }, 500);
+    }, 2000);
 
-    log('VIDAA inline settings system loaded');
+    log('VIDAA Interface section injection loaded');
 })();
 
 // ═══════════════════════════════════════════════════════════════════════
