@@ -2305,43 +2305,37 @@
         log('VIDAA panel shown in right column with', items.length, 'toggles');
     }
 
-    // ─── Find the "About" item and its parent list ─────────────────
-    // Uses a robust approach: search ALL elements on the page for "About" text,
-    // then walk up to find the list container. No dependency on DOM nesting depth.
+    // ─── Find the "About" button and its parent list ───────────────
+    // Dead simple: find the div that says "About" (no children = leaf text node),
+    // then walk UP to the option element (parent with SVG), then one more up to the list.
     function findLeftColAndAbout() {
-        // Strategy: find all option-like elements, look for one with "About" label text
-        // The left column has: email, Interface, Playback, Server, About
-        var allEls = document.querySelectorAll('div');
-        var aboutOption = null;
+        var allDivs = document.querySelectorAll('div');
+        var aboutLabel = null;
 
-        for (var i = 0; i < allEls.length; i++) {
-            var el = allEls[i];
-            // Skip our own injected elements
-            if (el.id && el.id.indexOf('vidaa') !== -1) continue;
-
-            // Check if this element has a label child with "About" text
-            var labels = el.querySelectorAll('div');
-            for (var j = 0; j < labels.length; j++) {
-                if (labels[j].children.length === 0 && labels[j].textContent.trim() === 'About') {
-                    // Found "About" label — its parent div (with the option class) is what we want
-                    aboutOption = el;
-                    // Make sure this is an option-like element (has SVG child = arrow/icon)
-                    if (el.querySelector('svg')) {
-                        aboutOption = el;
-                        break;
-                    }
-                }
+        // Step 1: Find the leaf div whose text is exactly "About"
+        for (var i = 0; i < allDivs.length; i++) {
+            var d = allDivs[i];
+            if (d.children.length === 0 && d.textContent.trim() === 'About') {
+                aboutLabel = d;
+                break;
             }
-            if (aboutOption) break;
         }
 
-        if (!aboutOption) {
-            log('Could not find About option');
+        if (!aboutLabel) {
             return { aboutOption: null, leftList: null };
         }
 
+        // Step 2: Walk up to the option element (the one with SVG arrow icon)
+        var aboutOption = aboutLabel.parentNode;
+        // Verify it looks like an option (has an SVG child for the icon/arrow)
+        if (!aboutOption || !aboutOption.querySelector('svg')) {
+            log('Found About text but parent has no SVG');
+            return { aboutOption: null, leftList: null };
+        }
+
+        // Step 3: The list container is the option's parent
         var leftList = aboutOption.parentNode;
-        log('Found About option, parent has', leftList ? leftList.children.length : 0, 'children');
+        log('Found About button, list has', leftList ? leftList.children.length : 0, 'items');
         return { aboutOption: aboutOption, leftList: leftList };
     }
 
