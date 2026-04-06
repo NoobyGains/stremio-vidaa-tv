@@ -985,7 +985,7 @@
             window.__registerVidaaSettingsItem({
                 id: 'toggle-720p-zoom',
                 type: 'toggle',
-                label: '720p UI Zoom Correction',
+                label: '720p Zoom',
                 description: 'Scales the UI for 720p projectors/TVs. Turn off if video has wrong aspect ratio.',
                 lsKey: ZOOM_KEY,
                 onToggle: function(enabled) {
@@ -2104,7 +2104,7 @@
         window.__registerVidaaSettingsItem({
             id: 'webtorrent-toggle',
             type: 'toggle',
-            label: 'Direct Torrent Streaming',
+            label: 'Torrent Streaming',
             description: 'Stream magnet links directly in the browser via WebTorrent',
             lsKey: LS_KEY,
             onToggle: function(nowEnabled) {
@@ -2152,10 +2152,9 @@
 </script>
 <script>
 // ═══════════════════════════════════════════════════════════════════════
-// VIDAA Settings — Sub-page in Interface Section
-// Adds ONE "VIDAA >" nav button after Background Blur.
-// Clicking it replaces the right column with a toggles sub-page.
-// "← Back" restores the Interface sub-menu.
+// VIDAA Settings — Left Column Category Button
+// Adds "VIDAA >" to the LEFT column (below About) as a top-level category.
+// Clicking it populates the RIGHT column with toggle switches.
 // All VIDAA toggles register via window.__registerVidaaSettingsItem(cfg).
 // Legacy window.__registerCommunityToggle is aliased for compatibility.
 // ═══════════════════════════════════════════════════════════════════════
@@ -2214,55 +2213,61 @@
         el.addEventListener('blur', function() { el.removeAttribute('focused'); });
     }
 
-    // ─── Build toggle row (for sub-page) ──────────────────────────
-    function buildToggleRow(templateOption, cfg) {
-        var row = templateOption.cloneNode(true);
-        stripReact(row);
+    // ─── Derive class names from live DOM ─────────────────────────
+    function getClassNames() {
+        // option class: from any existing option row
+        var anyOption = document.querySelector('[class*="option-"]');
+        var optionCls = anyOption ? anyOption.className : 'option-pCk4g';
+
+        // label class: from any existing label
+        var anyLabel = anyOption ? anyOption.querySelector('[class*="label-"]') : null;
+        var labelCls = anyLabel ? anyLabel.className : 'label-ZUqct';
+
+        // toggle class: find a row that has a toggle pill (from right-col sub-pages)
+        var anyToggle = document.querySelector('[class*="toggle-"]');
+        var toggleCls = anyToggle ? anyToggle.className.replace(' checked', '').trim() : 'toggle-EKrug';
+
+        // scroll container and list classes: from right column
+        var innerEl = document.querySelector('[class*="inner-"]');
+        var rightCol = innerEl ? innerEl.children[1] : null;
+        var scrollEl = rightCol ? rightCol.firstElementChild : null;
+        var listEl = scrollEl ? scrollEl.firstElementChild : null;
+        var scrollCls = scrollEl ? scrollEl.className : 'scroll-container-vsSy7';
+        var listCls = listEl ? listEl.className : 'list-pGB6u';
+
+        return { optionCls: optionCls, labelCls: labelCls, toggleCls: toggleCls, scrollCls: scrollCls, listCls: listCls, rightCol: rightCol };
+    }
+
+    // ─── Build a toggle row from scratch ──────────────────────────
+    function buildToggleRow(cls, cfg) {
+        var row = document.createElement('div');
+        row.className = cls.optionCls;
         row.id = 'vidaa-subopt-' + cfg.id;
-        row.removeAttribute('focused');
 
-        // Set label
-        var labelEl = row.querySelector('[class*="label-"]');
-        if (labelEl) labelEl.textContent = cfg.label;
+        var labelEl = document.createElement('div');
+        labelEl.className = cls.labelCls;
+        // Use flex to push toggle to right side, label takes only needed space
+        labelEl.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        labelEl.textContent = cfg.label;
+        row.appendChild(labelEl);
 
-        // Ensure there is a toggle element (remove arrow SVGs, keep/add toggle)
-        // Remove all SVGs that are arrow chevrons (they have no [class*="toggle-"])
-        var svgs = row.querySelectorAll('svg');
-        for (var s = 0; s < svgs.length; s++) {
-            // Keep SVG only if it's inside a toggle element
-            if (!svgs[s].closest('[class*="toggle-"]')) {
-                svgs[s].remove();
-            }
-        }
-
-        var togEl = row.querySelector('[class*="toggle-"]');
-        if (!togEl) {
-            // Clone the toggle from the template if present, otherwise create stub
-            var templateToggle = templateOption.querySelector('[class*="toggle-"]');
-            if (templateToggle) {
-                togEl = templateToggle.cloneNode(true);
-                row.appendChild(togEl);
-            }
-        }
-
-        if (togEl) {
-            togEl.classList.remove('checked');
-            var enabled = false;
-            try { enabled = localStorage.getItem(cfg.lsKey) === 'true'; } catch(e) {}
-            if (enabled) togEl.classList.add('checked');
-        }
+        var togEl = document.createElement('div');
+        togEl.className = cls.toggleCls;
+        // Ensure toggle has fixed size and doesn't get squeezed
+        togEl.style.cssText = 'flex-shrink:0;';
+        var enabled = false;
+        try { enabled = localStorage.getItem(cfg.lsKey) === 'true'; } catch(e) {}
+        if (enabled) togEl.classList.add('checked');
+        row.appendChild(togEl);
 
         addFocusHandlers(row);
-        row.onclick = null;
 
         (function(r, config, tEl) {
             function doToggle() {
                 var now = localStorage.getItem(config.lsKey) !== 'true';
                 localStorage.setItem(config.lsKey, now ? 'true' : 'false');
-                if (tEl) {
-                    if (now) tEl.classList.add('checked');
-                    else tEl.classList.remove('checked');
-                }
+                if (now) tEl.classList.add('checked');
+                else tEl.classList.remove('checked');
                 if (config.onToggle) config.onToggle(now);
                 log('Toggled ' + config.label + ':', now);
             }
@@ -2275,60 +2280,34 @@
         return row;
     }
 
-    // ─── Show VIDAA sub-page in the right column ──────────────────
-    function showVidaaSubPage(rightCol, scrollCls, listCls, templateOption) {
-        // Save current right column content so Back can restore it
-        rightCol._vidaaSavedHTML = rightCol.innerHTML;
+    // ─── Populate right column with VIDAA toggles ─────────────────
+    function showVidaaPanelInRightCol(cls) {
+        var rightCol = cls.rightCol;
+        if (!rightCol) return;
 
         var items = window.__vidaaSettingsItems || [];
 
-        // Build the panel container using the same scroll/list classes
         var scroll = document.createElement('div');
-        scroll.className = scrollCls;
+        scroll.className = cls.scrollCls;
 
         var list = document.createElement('div');
-        list.className = listCls;
-
-        // ← Back row
-        var backRow = templateOption.cloneNode(true);
-        stripReact(backRow);
-        backRow.id = 'vidaa-back-btn';
-        backRow.removeAttribute('focused');
-        var backLabel = backRow.querySelector('[class*="label-"]');
-        if (backLabel) backLabel.textContent = '\u2190 Back';
-        // Remove all SVGs from back row (no toggle, no arrow)
-        var backSvgs = backRow.querySelectorAll('svg');
-        for (var bs = 0; bs < backSvgs.length; bs++) backSvgs[bs].remove();
-        var backTog = backRow.querySelector('[class*="toggle-"]');
-        if (backTog) backTog.remove();
-        addFocusHandlers(backRow);
-        backRow.onclick = null;
-        backRow.addEventListener('click', function() { restoreInterface(rightCol); });
-        backRow.addEventListener('keydown', function(e) {
-            if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); restoreInterface(rightCol); }
-        });
-        list.appendChild(backRow);
+        list.className = cls.listCls;
 
         // Toggle rows
         for (var i = 0; i < items.length; i++) {
-            list.appendChild(buildToggleRow(templateOption, items[i]));
+            list.appendChild(buildToggleRow(cls, items[i]));
         }
 
-        // Exit Stremio row (red, no toggle)
-        var exitRow = templateOption.cloneNode(true);
-        stripReact(exitRow);
+        // Exit Stremio (red, no toggle)
+        var exitRow = document.createElement('div');
+        exitRow.className = cls.optionCls;
         exitRow.id = 'vidaa-subopt-exit';
-        exitRow.removeAttribute('focused');
-        var exitLabel = exitRow.querySelector('[class*="label-"]');
-        if (exitLabel) { exitLabel.textContent = 'Exit Stremio'; exitLabel.style.color = '#f87171'; }
-        var exitSvgs = exitRow.querySelectorAll('svg');
-        for (var es = 0; es < exitSvgs.length; es++) {
-            if (!exitSvgs[es].closest('[class*="toggle-"]')) exitSvgs[es].remove();
-        }
-        var exitTog = exitRow.querySelector('[class*="toggle-"]');
-        if (exitTog) exitTog.remove();
+        var exitLabel = document.createElement('div');
+        exitLabel.className = cls.labelCls;
+        exitLabel.textContent = 'Exit Stremio';
+        exitLabel.style.color = '#f87171';
+        exitRow.appendChild(exitLabel);
         addFocusHandlers(exitRow);
-        exitRow.onclick = null;
         exitRow.addEventListener('click', function() { if (window.__exitApp) window.__exitApp(); });
         exitRow.addEventListener('keydown', function(e) {
             if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); if (window.__exitApp) window.__exitApp(); }
@@ -2339,103 +2318,96 @@
         rightCol.innerHTML = '';
         rightCol.appendChild(scroll);
 
-        log('VIDAA sub-page shown with', items.length, 'toggles');
+        log('VIDAA panel shown in right column with', items.length, 'toggles');
     }
 
-    // ─── Restore Interface right column ───────────────────────────
-    function restoreInterface(rightCol) {
-        if (rightCol._vidaaSavedHTML) {
-            rightCol.innerHTML = rightCol._vidaaSavedHTML;
-            rightCol._vidaaSavedHTML = null;
-            // Re-inject our VIDAA nav button since the HTML was restored from snapshot
-            // (snapshot already contains it if injection happened before sub-page was opened)
-            log('Restored Interface right column');
+    // ─── Find left column (has Interface/About entries) ───────────
+    function findLeftColAndAbout() {
+        var allOptions = document.querySelectorAll('[class*="option-"]');
+        var aboutOption = null;
+        var leftList = null;
+
+        for (var i = 0; i < allOptions.length; i++) {
+            var text = (allOptions[i].textContent || '').trim().toLowerCase();
+            if (text === 'about') {
+                aboutOption = allOptions[i];
+                leftList = allOptions[i].parentNode;
+                break;
+            }
         }
+
+        return { aboutOption: aboutOption, leftList: leftList };
     }
 
-    // ─── Inject ONE "VIDAA >" nav button after Background Blur ────
+    // ─── Inject VIDAA button into left column ────────────────────
     var injected = false;
 
     setInterval(function() {
         if (location.hash.indexOf('#/settings') !== 0) { injected = false; return; }
         if (injected) return;
-
-        // Find Background Blur option in the right column
-        var allOptions = document.querySelectorAll('[class*="option-"]');
-        var bgBlurOption = null;
-
-        for (var i = 0; i < allOptions.length; i++) {
-            var text = allOptions[i].textContent || '';
-            if (text.toLowerCase().indexOf('background') !== -1 && text.toLowerCase().indexOf('blur') !== -1) {
-                bgBlurOption = allOptions[i];
-                break;
-            }
-        }
-
-        if (!bgBlurOption) return;
         if (document.getElementById('vidaa-nav-btn')) return;
 
-        var container = bgBlurOption.parentNode;
-        if (!container) return;
+        var found = findLeftColAndAbout();
+        var aboutOption = found.aboutOption;
+        var leftList = found.leftList;
+        if (!aboutOption || !leftList) return;
 
-        // Determine the right column (ancestor of bgBlurOption)
-        // structure: rightCol > scrollContainer > list > option
-        var listEl = container;
-        var scrollEl = listEl.parentNode;
-        var rightCol = scrollEl ? scrollEl.parentNode : null;
-        if (!rightCol) return;
+        var cls = getClassNames();
 
-        // Clone Background Blur to make a nav-style VIDAA button (it already has arrow SVG)
-        var vidaaNav = bgBlurOption.cloneNode(true);
-        stripReact(vidaaNav);
-        vidaaNav.id = 'vidaa-nav-btn';
-        vidaaNav.removeAttribute('focused');
+        // Clone "About" to make VIDAA button — keeps arrow SVG, same structure
+        var vidaaBtn = aboutOption.cloneNode(true);
+        stripReact(vidaaBtn);
+        vidaaBtn.id = 'vidaa-nav-btn';
+        vidaaBtn.removeAttribute('focused');
+        // Remove any selected/active class variants
+        vidaaBtn.className = vidaaBtn.className.replace(/\bselected-\S+/g, '').trim();
 
-        // Remove any toggle element (nav buttons don't have toggles)
-        var navTog = vidaaNav.querySelector('[class*="toggle-"]');
-        if (navTog) navTog.remove();
-
-        var navLabel = vidaaNav.querySelector('[class*="label-"]');
+        var navLabel = vidaaBtn.querySelector('[class*="label-"]');
         if (navLabel) navLabel.textContent = 'VIDAA';
 
-        addFocusHandlers(vidaaNav);
-        vidaaNav.onclick = null;
+        addFocusHandlers(vidaaBtn);
+        vidaaBtn.onclick = null;
 
-        var scrollCls = scrollEl.className;
-        var listCls = listEl.className;
-
-        (function(btn, rc, sc, lc, tmpl) {
+        (function(btn, clsRef) {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
-                showVidaaSubPage(rc, sc, lc, tmpl);
+                // Re-derive class names at click time for accuracy
+                var freshCls = getClassNames();
+                showVidaaPanelInRightCol(freshCls);
+                // Highlight VIDAA as selected (remove selected from siblings, add to this)
+                var siblings = btn.parentNode ? btn.parentNode.querySelectorAll('[class*="option-"]') : [];
+                for (var s = 0; s < siblings.length; s++) {
+                    siblings[s].removeAttribute('focused');
+                }
+                btn.setAttribute('focused', '');
             });
             btn.addEventListener('keydown', function(e) {
                 if (e.keyCode === 13 || e.keyCode === 32) {
                     e.preventDefault();
-                    showVidaaSubPage(rc, sc, lc, tmpl);
+                    btn.click();
                 }
             });
-        })(vidaaNav, rightCol, scrollCls, listCls, bgBlurOption);
+        })(vidaaBtn, cls);
 
-        // Insert after Background Blur
-        if (bgBlurOption.nextSibling) {
-            container.insertBefore(vidaaNav, bgBlurOption.nextSibling);
+        // Append after "About" in the left column
+        if (aboutOption.nextSibling) {
+            leftList.insertBefore(vidaaBtn, aboutOption.nextSibling);
         } else {
-            container.appendChild(vidaaNav);
+            leftList.appendChild(vidaaBtn);
         }
 
         injected = true;
-        log('Injected VIDAA nav button after Background Blur');
+        log('Injected VIDAA button into left column after About');
     }, 1000);
 
-    // Reset injection flag when VIDAA nav button disappears (user navigated away)
+    // Reset injection flag on navigation away from settings
     setInterval(function() {
         if (!document.getElementById('vidaa-nav-btn')) {
             injected = false;
         }
     }, 2000);
 
-    log('VIDAA Interface sub-page injection loaded');
+    log('VIDAA left column injection loaded');
 })();
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -2566,7 +2538,7 @@
         window.__registerCommunityToggle({
             id: 'stereo-downmix-toggle',
             lsKey: LS_KEY,
-            title: 'Force Stereo Audio (Experimental)',
+            title: 'Force Stereo',
             description: 'Downmix surround sound to stereo with dialogue boost',
             onToggle: function(nowEnabled) {
                 log('Force stereo toggled:', nowEnabled ? 'ON' : 'OFF');
@@ -2746,7 +2718,7 @@
         window.__registerCommunityToggle({
             id: 'audio-delay-toggle',
             lsKey: ENABLED_KEY,
-            title: 'Audio Delay Adjustment (Experimental)',
+            title: 'Audio Delay',
             description: 'Shift+[ / Shift+] to adjust audio sync in player',
             onToggle: function(nowEnabled) {
                 log('Audio delay toggled:', nowEnabled ? 'ON' : 'OFF');
@@ -2988,7 +2960,7 @@
         window.__registerCommunityToggle({
             id: 'autoplay-best-toggle',
             lsKey: LS_KEY,
-            title: 'Auto-Play Best Stream (Experimental)',
+            title: 'Auto-Play Stream',
             description: 'Automatically picks the highest-quality stream',
             onToggle: function(nowEnabled) {
                 log('Auto-play best toggled:', nowEnabled ? 'ON' : 'OFF');
@@ -3244,7 +3216,7 @@
         window.__registerCommunityToggle({
             id: 'mark-season-toggle',
             lsKey: LS_KEY,
-            title: 'Quick Mark Season Watched (Experimental)',
+            title: 'Mark Season',
             description: 'Adds a button to mark all episodes in a season as watched',
             onToggle: function(nowEnabled) {
                 log('Mark season toggled:', nowEnabled ? 'ON' : 'OFF');
@@ -3510,7 +3482,7 @@
         window.__registerCommunityToggle({
             id: 'sub-drift-toggle',
             lsKey: LS_KEY,
-            title: 'Auto-Correct Subtitle Drift (Experimental)',
+            title: 'Subtitle Drift Fix',
             description: 'Learns and compensates for subtitle timing drift',
             onToggle: function(nowEnabled) {
                 log('Subtitle drift fix toggled:', nowEnabled ? 'ON' : 'OFF');
