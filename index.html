@@ -2305,34 +2305,43 @@
         log('VIDAA panel shown in right column with', items.length, 'toggles');
     }
 
-    // ─── Find left column list and "About" item ───────────────────
-    // The settings layout: inner-lJOeL > [leftCol, rightCol]
-    // leftCol > scroll-container > list-pGB6u > option rows (Interface, Playback, etc.)
+    // ─── Find the "About" item and its parent list ─────────────────
+    // Uses a robust approach: search ALL elements on the page for "About" text,
+    // then walk up to find the list container. No dependency on DOM nesting depth.
     function findLeftColAndAbout() {
-        var innerEl = document.querySelector('[class*="inner-"]');
-        if (!innerEl) return { aboutOption: null, leftList: null };
-
-        var leftCol = innerEl.children[0];
-        if (!leftCol) return { aboutOption: null, leftList: null };
-
-        // The list is: leftCol > scrollEl > listEl
-        var scrollEl = leftCol.firstElementChild;
-        var leftList = scrollEl ? scrollEl.firstElementChild : null;
-        if (!leftList) return { aboutOption: null, leftList: null };
-
-        // Find "About" option within the left list only
-        var opts = leftList.querySelectorAll('[class*="option-"]');
+        // Strategy: find all option-like elements, look for one with "About" label text
+        // The left column has: email, Interface, Playback, Server, About
+        var allEls = document.querySelectorAll('div');
         var aboutOption = null;
-        for (var i = 0; i < opts.length; i++) {
-            // Use label child text only, not full textContent (which includes SVG title text)
-            var labelEl = opts[i].querySelector('[class*="label-"]');
-            var text = labelEl ? labelEl.textContent.trim().toLowerCase() : (opts[i].textContent || '').trim().toLowerCase();
-            if (text === 'about') {
-                aboutOption = opts[i];
-                break;
+
+        for (var i = 0; i < allEls.length; i++) {
+            var el = allEls[i];
+            // Skip our own injected elements
+            if (el.id && el.id.indexOf('vidaa') !== -1) continue;
+
+            // Check if this element has a label child with "About" text
+            var labels = el.querySelectorAll('div');
+            for (var j = 0; j < labels.length; j++) {
+                if (labels[j].children.length === 0 && labels[j].textContent.trim() === 'About') {
+                    // Found "About" label — its parent div (with the option class) is what we want
+                    aboutOption = el;
+                    // Make sure this is an option-like element (has SVG child = arrow/icon)
+                    if (el.querySelector('svg')) {
+                        aboutOption = el;
+                        break;
+                    }
+                }
             }
+            if (aboutOption) break;
         }
 
+        if (!aboutOption) {
+            log('Could not find About option');
+            return { aboutOption: null, leftList: null };
+        }
+
+        var leftList = aboutOption.parentNode;
+        log('Found About option, parent has', leftList ? leftList.children.length : 0, 'children');
         return { aboutOption: aboutOption, leftList: leftList };
     }
 
