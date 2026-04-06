@@ -2149,9 +2149,10 @@
 </script>
 <script>
 // ═══════════════════════════════════════════════════════════════════════
-// VIDAA Settings — Interface Section Injection
-// Injects all VIDAA toggles directly into the Interface sub-menu,
-// right below the "Background Blur" option.
+// VIDAA Settings — Sub-page in Interface Section
+// Adds ONE "VIDAA >" nav button after Background Blur.
+// Clicking it replaces the right column with a toggles sub-page.
+// "← Back" restores the Interface sub-menu.
 // All VIDAA toggles register via window.__registerVidaaSettingsItem(cfg).
 // Legacy window.__registerCommunityToggle is aliased for compatibility.
 // ═══════════════════════════════════════════════════════════════════════
@@ -2191,7 +2192,165 @@
         });
     };
 
-    // ─── Inject toggles after Background Blur ─────────────────────
+    // ─── Helpers ───────────────────────────────────────────────────
+    function stripReact(el) {
+        var all = [el].concat(Array.prototype.slice.call(el.querySelectorAll('*')));
+        for (var i = 0; i < all.length; i++) {
+            var props = Object.keys(all[i]);
+            for (var j = 0; j < props.length; j++) {
+                if (props[j].indexOf('__react') === 0 || props[j].indexOf('__$') === 0) {
+                    try { delete all[i][props[j]]; } catch(e) {}
+                }
+            }
+        }
+    }
+
+    function addFocusHandlers(el) {
+        el.setAttribute('tabindex', '0');
+        el.addEventListener('focus', function() { el.setAttribute('focused', ''); });
+        el.addEventListener('blur', function() { el.removeAttribute('focused'); });
+    }
+
+    // ─── Build toggle row (for sub-page) ──────────────────────────
+    function buildToggleRow(templateOption, cfg) {
+        var row = templateOption.cloneNode(true);
+        stripReact(row);
+        row.id = 'vidaa-subopt-' + cfg.id;
+        row.removeAttribute('focused');
+
+        // Set label
+        var labelEl = row.querySelector('[class*="label-"]');
+        if (labelEl) labelEl.textContent = cfg.label;
+
+        // Ensure there is a toggle element (remove arrow SVGs, keep/add toggle)
+        // Remove all SVGs that are arrow chevrons (they have no [class*="toggle-"])
+        var svgs = row.querySelectorAll('svg');
+        for (var s = 0; s < svgs.length; s++) {
+            // Keep SVG only if it's inside a toggle element
+            if (!svgs[s].closest('[class*="toggle-"]')) {
+                svgs[s].remove();
+            }
+        }
+
+        var togEl = row.querySelector('[class*="toggle-"]');
+        if (!togEl) {
+            // Clone the toggle from the template if present, otherwise create stub
+            var templateToggle = templateOption.querySelector('[class*="toggle-"]');
+            if (templateToggle) {
+                togEl = templateToggle.cloneNode(true);
+                row.appendChild(togEl);
+            }
+        }
+
+        if (togEl) {
+            togEl.classList.remove('checked');
+            var enabled = false;
+            try { enabled = localStorage.getItem(cfg.lsKey) === 'true'; } catch(e) {}
+            if (enabled) togEl.classList.add('checked');
+        }
+
+        addFocusHandlers(row);
+        row.onclick = null;
+
+        (function(r, config, tEl) {
+            function doToggle() {
+                var now = localStorage.getItem(config.lsKey) !== 'true';
+                localStorage.setItem(config.lsKey, now ? 'true' : 'false');
+                if (tEl) {
+                    if (now) tEl.classList.add('checked');
+                    else tEl.classList.remove('checked');
+                }
+                if (config.onToggle) config.onToggle(now);
+                log('Toggled ' + config.label + ':', now);
+            }
+            r.addEventListener('click', function(e) { e.stopPropagation(); doToggle(); });
+            r.addEventListener('keydown', function(e) {
+                if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); doToggle(); }
+            });
+        })(row, cfg, togEl);
+
+        return row;
+    }
+
+    // ─── Show VIDAA sub-page in the right column ──────────────────
+    function showVidaaSubPage(rightCol, scrollCls, listCls, templateOption) {
+        // Save current right column content so Back can restore it
+        rightCol._vidaaSavedHTML = rightCol.innerHTML;
+
+        var items = window.__vidaaSettingsItems || [];
+
+        // Build the panel container using the same scroll/list classes
+        var scroll = document.createElement('div');
+        scroll.className = scrollCls;
+
+        var list = document.createElement('div');
+        list.className = listCls;
+
+        // ← Back row
+        var backRow = templateOption.cloneNode(true);
+        stripReact(backRow);
+        backRow.id = 'vidaa-back-btn';
+        backRow.removeAttribute('focused');
+        var backLabel = backRow.querySelector('[class*="label-"]');
+        if (backLabel) backLabel.textContent = '\u2190 Back';
+        // Remove all SVGs from back row (no toggle, no arrow)
+        var backSvgs = backRow.querySelectorAll('svg');
+        for (var bs = 0; bs < backSvgs.length; bs++) backSvgs[bs].remove();
+        var backTog = backRow.querySelector('[class*="toggle-"]');
+        if (backTog) backTog.remove();
+        addFocusHandlers(backRow);
+        backRow.onclick = null;
+        backRow.addEventListener('click', function() { restoreInterface(rightCol); });
+        backRow.addEventListener('keydown', function(e) {
+            if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); restoreInterface(rightCol); }
+        });
+        list.appendChild(backRow);
+
+        // Toggle rows
+        for (var i = 0; i < items.length; i++) {
+            list.appendChild(buildToggleRow(templateOption, items[i]));
+        }
+
+        // Exit Stremio row (red, no toggle)
+        var exitRow = templateOption.cloneNode(true);
+        stripReact(exitRow);
+        exitRow.id = 'vidaa-subopt-exit';
+        exitRow.removeAttribute('focused');
+        var exitLabel = exitRow.querySelector('[class*="label-"]');
+        if (exitLabel) { exitLabel.textContent = 'Exit Stremio'; exitLabel.style.color = '#f87171'; }
+        var exitSvgs = exitRow.querySelectorAll('svg');
+        for (var es = 0; es < exitSvgs.length; es++) {
+            if (!exitSvgs[es].closest('[class*="toggle-"]')) exitSvgs[es].remove();
+        }
+        var exitTog = exitRow.querySelector('[class*="toggle-"]');
+        if (exitTog) exitTog.remove();
+        addFocusHandlers(exitRow);
+        exitRow.onclick = null;
+        exitRow.addEventListener('click', function() { if (window.__exitApp) window.__exitApp(); });
+        exitRow.addEventListener('keydown', function(e) {
+            if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); if (window.__exitApp) window.__exitApp(); }
+        });
+        list.appendChild(exitRow);
+
+        scroll.appendChild(list);
+        rightCol.innerHTML = '';
+        rightCol.appendChild(scroll);
+
+        log('VIDAA sub-page shown with', items.length, 'toggles');
+    }
+
+    // ─── Restore Interface right column ───────────────────────────
+    function restoreInterface(rightCol) {
+        if (rightCol._vidaaSavedHTML) {
+            rightCol.innerHTML = rightCol._vidaaSavedHTML;
+            rightCol._vidaaSavedHTML = null;
+            // Re-inject our VIDAA nav button since the HTML was restored from snapshot
+            // (snapshot already contains it if injection happened before sub-page was opened)
+            log('Restored Interface right column');
+        }
+    }
+
+    // ─── Inject ONE "VIDAA >" nav button after Background Blur ────
     var injected = false;
 
     setInterval(function() {
@@ -2211,122 +2370,69 @@
         }
 
         if (!bgBlurOption) return;
-        if (document.getElementById('vidaa-injected-marker')) return;
+        if (document.getElementById('vidaa-nav-btn')) return;
 
         var container = bgBlurOption.parentNode;
         if (!container) return;
 
-        // Marker to prevent double-injection
-        var marker = document.createElement('div');
-        marker.id = 'vidaa-injected-marker';
-        marker.style.display = 'none';
-        container.appendChild(marker);
+        // Determine the right column (ancestor of bgBlurOption)
+        // structure: rightCol > scrollContainer > list > option
+        var listEl = container;
+        var scrollEl = listEl.parentNode;
+        var rightCol = scrollEl ? scrollEl.parentNode : null;
+        if (!rightCol) return;
 
-        var items = window.__vidaaSettingsItems || [];
-        var insertAfter = bgBlurOption;
+        // Clone Background Blur to make a nav-style VIDAA button (it already has arrow SVG)
+        var vidaaNav = bgBlurOption.cloneNode(true);
+        stripReact(vidaaNav);
+        vidaaNav.id = 'vidaa-nav-btn';
+        vidaaNav.removeAttribute('focused');
 
-        for (var j = 0; j < items.length; j++) {
-            var cfg = items[j];
-            var enabled = false;
-            try { enabled = localStorage.getItem(cfg.lsKey) === 'true'; } catch(e) {}
+        // Remove any toggle element (nav buttons don't have toggles)
+        var navTog = vidaaNav.querySelector('[class*="toggle-"]');
+        if (navTog) navTog.remove();
 
-            var clone = bgBlurOption.cloneNode(true);
-            clone.id = 'vidaa-opt-' + cfg.id;
+        var navLabel = vidaaNav.querySelector('[class*="label-"]');
+        if (navLabel) navLabel.textContent = 'VIDAA';
 
-            // Strip React internal properties so React doesn't intercept events
-            var allEls = [clone].concat(Array.prototype.slice.call(clone.querySelectorAll('*')));
-            for (var k = 0; k < allEls.length; k++) {
-                var props = Object.keys(allEls[k]);
-                for (var p = 0; p < props.length; p++) {
-                    if (props[p].indexOf('__react') === 0 || props[p].indexOf('__$') === 0) {
-                        try { delete allEls[k][props[p]]; } catch(e) {}
-                    }
+        addFocusHandlers(vidaaNav);
+        vidaaNav.onclick = null;
+
+        var scrollCls = scrollEl.className;
+        var listCls = listEl.className;
+
+        (function(btn, rc, sc, lc, tmpl) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                showVidaaSubPage(rc, sc, lc, tmpl);
+            });
+            btn.addEventListener('keydown', function(e) {
+                if (e.keyCode === 13 || e.keyCode === 32) {
+                    e.preventDefault();
+                    showVidaaSubPage(rc, sc, lc, tmpl);
                 }
-            }
+            });
+        })(vidaaNav, rightCol, scrollCls, listCls, bgBlurOption);
 
-            var cloneLabel = clone.querySelector('[class*="label-"]');
-            if (cloneLabel) cloneLabel.textContent = cfg.label;
-
-            var cloneToggle = clone.querySelector('[class*="toggle-"]');
-            if (cloneToggle) {
-                // Preserve all original classes — only add/remove checked
-                cloneToggle.classList.remove('checked');
-                if (enabled) cloneToggle.classList.add('checked');
-            }
-
-            (function(el, config, togEl) {
-                function doToggle() {
-                    var now = localStorage.getItem(config.lsKey) !== 'true';
-                    localStorage.setItem(config.lsKey, now ? 'true' : 'false');
-                    if (togEl) {
-                        if (now) togEl.classList.add('checked');
-                        else togEl.classList.remove('checked');
-                    }
-                    if (config.onToggle) config.onToggle(now);
-                    log('Toggled ' + config.label + ':', now);
-                }
-
-                el.onclick = null;
-                el.addEventListener('click', function(e) { e.stopPropagation(); doToggle(); });
-                el.addEventListener('keydown', function(e) {
-                    if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); doToggle(); }
-                });
-                el.addEventListener('focus', function() { el.setAttribute('focused', ''); });
-                el.addEventListener('blur', function() { el.removeAttribute('focused'); });
-            })(clone, cfg, cloneToggle);
-
-            clone.setAttribute('tabindex', '0');
-
-            if (insertAfter.nextSibling) {
-                container.insertBefore(clone, insertAfter.nextSibling);
-            } else {
-                container.appendChild(clone);
-            }
-            insertAfter = clone;
-        }
-
-        // Exit Stremio button at the end
-        var exitClone = bgBlurOption.cloneNode(true);
-        exitClone.id = 'vidaa-opt-exit';
-        // Strip React internals
-        var exitEls = [exitClone].concat(Array.prototype.slice.call(exitClone.querySelectorAll('*')));
-        for (var x = 0; x < exitEls.length; x++) {
-            var ep = Object.keys(exitEls[x]);
-            for (var y = 0; y < ep.length; y++) {
-                if (ep[y].indexOf('__react') === 0 || ep[y].indexOf('__$') === 0) {
-                    try { delete exitEls[x][ep[y]]; } catch(e) {}
-                }
-            }
-        }
-        var exitLabel = exitClone.querySelector('[class*="label-"]');
-        if (exitLabel) { exitLabel.textContent = 'Exit Stremio'; exitLabel.style.color = '#f87171'; }
-        var exitToggle = exitClone.querySelector('[class*="toggle-"]');
-        if (exitToggle) exitToggle.remove();
-        exitClone.setAttribute('tabindex', '0');
-        exitClone.onclick = null;
-        exitClone.addEventListener('click', function() { if (window.__exitApp) window.__exitApp(); });
-        exitClone.addEventListener('keydown', function(e) { if (e.keyCode === 13) { if (window.__exitApp) window.__exitApp(); } });
-        exitClone.addEventListener('focus', function() { exitClone.setAttribute('focused', ''); });
-        exitClone.addEventListener('blur', function() { exitClone.removeAttribute('focused'); });
-
-        if (insertAfter.nextSibling) {
-            container.insertBefore(exitClone, insertAfter.nextSibling);
+        // Insert after Background Blur
+        if (bgBlurOption.nextSibling) {
+            container.insertBefore(vidaaNav, bgBlurOption.nextSibling);
         } else {
-            container.appendChild(exitClone);
+            container.appendChild(vidaaNav);
         }
 
         injected = true;
-        log('Injected', items.length, 'toggles after Background Blur');
+        log('Injected VIDAA nav button after Background Blur');
     }, 1000);
 
-    // Reset injection flag when Interface options disappear (user navigates away)
+    // Reset injection flag when VIDAA nav button disappears (user navigated away)
     setInterval(function() {
-        if (!document.getElementById('vidaa-injected-marker')) {
+        if (!document.getElementById('vidaa-nav-btn')) {
             injected = false;
         }
     }, 2000);
 
-    log('VIDAA Interface section injection loaded');
+    log('VIDAA Interface sub-page injection loaded');
 })();
 
 // ═══════════════════════════════════════════════════════════════════════
