@@ -977,11 +977,18 @@
 
             var exitDiv = document.createElement('div');
             exitDiv.id = 'vidaa-exit-btn';
-            exitDiv.style.cssText = 'margin:20px auto;padding:14px 32px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:10px;color:#f87171;font-size:1rem;font-family:PlusJakartaSans,sans-serif;font-weight:600;cursor:pointer;text-align:center;max-width:300px;';
-            exitDiv.textContent = 'Exit Stremio';
+            exitDiv.className = 'option-pCk4g';
             exitDiv.setAttribute('tabindex', '0');
-            exitDiv.onfocus = function() { this.style.outline = '3px solid #f87171'; };
-            exitDiv.onblur = function() { this.style.outline = 'none'; };
+            exitDiv.style.cssText = 'margin-top:1rem;';
+
+            var exitLabel = document.createElement('div');
+            exitLabel.className = 'label-ZUqct';
+            exitLabel.style.cssText = 'color:#f87171;';
+            exitLabel.textContent = 'Exit Stremio';
+            exitDiv.appendChild(exitLabel);
+
+            exitDiv.onfocus = function() { this.setAttribute('focused', ''); };
+            exitDiv.onblur = function() { this.removeAttribute('focused'); };
             exitDiv.onclick = exitApp;
             exitDiv.onkeydown = function(e) { if (e.keyCode === 13 || e.keyCode === 32) exitApp(); };
             target.appendChild(exitDiv);
@@ -2088,61 +2095,48 @@
 
             var toggleDiv = document.createElement('div');
             toggleDiv.id = 'webtorrent-toggle';
+            toggleDiv.className = 'option-pCk4g';
             toggleDiv.setAttribute('tabindex', '0');
-            toggleDiv.style.cssText = 'margin:16px auto;padding:14px 24px;background:rgba(123,91,245,0.1);border:1px solid rgba(123,91,245,0.3);border-radius:10px;max-width:400px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;';
 
             var labelDiv = document.createElement('div');
-            labelDiv.innerHTML = '<div style="color:#ccc;font-size:0.95rem;font-weight:600;">Direct Torrent Streaming</div>' +
-                '<div style="color:#777;font-size:0.8rem;">Experimental \u2014 streams torrents in-browser via WebTorrent</div>';
+            labelDiv.className = 'label-ZUqct';
+            labelDiv.textContent = 'Direct Torrent Streaming';
+            toggleDiv.appendChild(labelDiv);
 
             var indicatorDiv = document.createElement('div');
             indicatorDiv.id = 'wt-toggle-indicator';
-            indicatorDiv.style.cssText = 'width:44px;height:24px;border-radius:12px;background:' + (enabled ? '#7b5bf5' : '#333') + ';position:relative;transition:background 0.2s;flex-shrink:0;';
-
-            var knob = document.createElement('div');
-            knob.style.cssText = 'width:20px;height:20px;border-radius:10px;background:#fff;position:absolute;top:2px;left:' + (enabled ? '22px' : '2px') + ';transition:left 0.2s;';
-            indicatorDiv.appendChild(knob);
-
-            toggleDiv.appendChild(labelDiv);
+            indicatorDiv.className = 'toggle-EKrug' + (enabled ? ' checked' : '');
             toggleDiv.appendChild(indicatorDiv);
-
-            // Status message
-            var statusDiv = document.createElement('div');
-            statusDiv.id = 'wt-status-msg';
-            statusDiv.style.cssText = 'margin:0 auto;max-width:400px;text-align:center;font-size:0.75rem;color:#666;font-family:PlusJakartaSans,sans-serif;min-height:1.2em;';
-            statusDiv.textContent = enabled ? 'WebTorrent is enabled. Magnet links will stream in-browser.' : '';
 
             function doToggle() {
                 var nowEnabled = !isEnabled();
                 setEnabled(nowEnabled);
-                indicatorDiv.style.background = nowEnabled ? '#7b5bf5' : '#333';
-                knob.style.left = nowEnabled ? '22px' : '2px';
-                statusDiv.textContent = nowEnabled ? 'WebTorrent is enabled. Magnet links will stream in-browser.' : 'WebTorrent is disabled.';
+                if (nowEnabled) {
+                    indicatorDiv.className = 'toggle-EKrug checked';
+                } else {
+                    indicatorDiv.className = 'toggle-EKrug';
+                }
                 log('WebTorrent toggled:', nowEnabled ? 'ON' : 'OFF');
 
                 // Pre-load library when enabling
                 if (nowEnabled && !clientLoaded) {
-                    statusDiv.textContent = 'Loading WebTorrent library...';
                     loadWebTorrentLib(function(err) {
-                        if (err) statusDiv.textContent = 'Failed to load library. Check connection.';
-                        else statusDiv.textContent = 'WebTorrent ready. Magnet links will stream in-browser.';
+                        if (err) log('Failed to pre-load library');
                     });
                 }
             }
 
             toggleDiv.onclick = doToggle;
             toggleDiv.onkeydown = function(e) { if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); doToggle(); } };
-            toggleDiv.onfocus = function() { this.style.outline = '3px solid #7b5bf5'; };
-            toggleDiv.onblur = function() { this.style.outline = 'none'; };
+            toggleDiv.onfocus = function() { this.setAttribute('focused', ''); };
+            toggleDiv.onblur = function() { this.removeAttribute('focused'); };
 
             // Insert before exit button if it exists, otherwise append
             var exitBtn = document.getElementById('vidaa-exit-btn');
             if (exitBtn) {
-                target.insertBefore(statusDiv, exitBtn);
-                target.insertBefore(toggleDiv, statusDiv);
+                target.insertBefore(toggleDiv, exitBtn);
             } else {
                 target.appendChild(toggleDiv);
-                target.appendChild(statusDiv);
             }
 
             log('Settings toggle injected');
@@ -2200,37 +2194,30 @@
 
         var wrapper = document.createElement('div');
         wrapper.id = cfg.id;
+        wrapper.className = 'option-pCk4g';
         wrapper.setAttribute('tabindex', '0');
-        wrapper.style.cssText = 'margin:16px auto;padding:14px 24px;background:rgba(123,91,245,0.1);border:1px solid rgba(123,91,245,0.3);border-radius:10px;max-width:400px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;';
 
         var labelDiv = document.createElement('div');
-        labelDiv.style.cssText = 'flex:1;margin-right:12px;';
-        labelDiv.innerHTML = '<div style="color:#ccc;font-size:0.95rem;font-weight:600;font-family:PlusJakartaSans,sans-serif;">' + cfg.title + '</div>' +
-            '<div style="color:#777;font-size:0.8rem;font-family:PlusJakartaSans,sans-serif;">' + cfg.description + '</div>';
+        labelDiv.className = 'label-ZUqct';
+        labelDiv.textContent = cfg.title;
+        wrapper.appendChild(labelDiv);
 
         var indicator = document.createElement('div');
-        indicator.style.cssText = 'width:44px;height:24px;border-radius:12px;background:' + (enabled ? '#7b5bf5' : '#333') + ';position:relative;transition:background 0.2s;flex-shrink:0;';
-
-        var knob = document.createElement('div');
-        knob.style.cssText = 'width:20px;height:20px;border-radius:10px;background:#fff;position:absolute;top:2px;left:' + (enabled ? '22px' : '2px') + ';transition:left 0.2s;';
-        indicator.appendChild(knob);
-
-        wrapper.appendChild(labelDiv);
+        indicator.className = 'toggle-EKrug' + (enabled ? ' checked' : '');
         wrapper.appendChild(indicator);
 
         function doToggle() {
             var now;
             try { now = localStorage.getItem(cfg.lsKey) !== 'true'; } catch(e) { now = true; }
             try { localStorage.setItem(cfg.lsKey, now ? 'true' : 'false'); } catch(e) {}
-            indicator.style.background = now ? '#7b5bf5' : '#333';
-            knob.style.left = now ? '22px' : '2px';
+            indicator.className = 'toggle-EKrug' + (now ? ' checked' : '');
             if (cfg.onToggle) cfg.onToggle(now);
         }
 
         wrapper.onclick = doToggle;
         wrapper.onkeydown = function(e) { if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); doToggle(); } };
-        wrapper.onfocus = function() { this.style.outline = '3px solid #7b5bf5'; };
-        wrapper.onblur = function() { this.style.outline = 'none'; };
+        wrapper.onfocus = function() { this.setAttribute('focused', ''); };
+        wrapper.onblur = function() { this.removeAttribute('focused'); };
 
         return { wrapper: wrapper, extra: cfg.extraContent ? cfg.extraContent(enabled) : null };
     }
@@ -2264,8 +2251,21 @@
             }
             if (!target) return;
 
-            // Insert point: before WebTorrent toggle or exit button
+            // Inject section header once, before WebTorrent toggle or exit button
             var insertBefore = document.getElementById('webtorrent-toggle') || document.getElementById('vidaa-exit-btn') || null;
+            if (!document.getElementById('vidaa-section-header')) {
+                var header = document.createElement('div');
+                header.id = 'vidaa-section-header';
+                header.style.cssText = 'padding:1rem 2em 0.5rem;color:hsla(0,0%,100%,0.3);font-size:1rem;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;';
+                header.textContent = 'VIDAA Enhancements';
+                if (insertBefore) {
+                    target.insertBefore(header, insertBefore);
+                } else {
+                    target.appendChild(header);
+                }
+                // Update insertBefore so community toggles go after the header
+                insertBefore = document.getElementById('webtorrent-toggle') || document.getElementById('vidaa-exit-btn') || null;
+            }
 
             for (var k = 0; k < pendingToggles.length; k++) {
                 var cfg = pendingToggles[k];
@@ -2597,47 +2597,44 @@
             extraContent: function(enabled) {
                 var row = document.createElement('div');
                 row.id = 'audio-delay-controls';
-                row.style.cssText = 'margin:4px auto 12px;max-width:400px;display:flex;align-items:center;justify-content:center;gap:12px;';
+                row.className = 'option-pCk4g';
+                row.setAttribute('tabindex', '0');
 
-                var btnMinus = document.createElement('button');
-                btnMinus.textContent = '\u2212';
-                btnMinus.setAttribute('tabindex', '0');
-                btnMinus.style.cssText = 'width:36px;height:36px;border-radius:8px;border:1px solid rgba(123,91,245,0.4);background:rgba(123,91,245,0.15);color:#ccc;font-size:1.2rem;cursor:pointer;font-family:PlusJakartaSans,sans-serif;';
+                var delayLabel = document.createElement('div');
+                delayLabel.className = 'label-ZUqct';
+                var currentDelay = getDelay();
+                var sign = currentDelay >= 0 ? '+' : '';
+                delayLabel.textContent = 'Audio Delay: ' + sign + currentDelay + 'ms  (\u2190\u2192 to adjust)';
+                row.appendChild(delayLabel);
 
-                var display = document.createElement('span');
-                display.style.cssText = 'color:#ccc;font-size:0.95rem;font-weight:600;font-family:PlusJakartaSans,sans-serif;min-width:80px;text-align:center;';
-                display.textContent = getDelay() + 'ms';
+                var fakeToggle = document.createElement('div');
+                fakeToggle.className = 'toggle-EKrug';
+                fakeToggle.style.display = 'none';
+                row.appendChild(fakeToggle);
 
-                var btnPlus = document.createElement('button');
-                btnPlus.textContent = '+';
-                btnPlus.setAttribute('tabindex', '0');
-                btnPlus.style.cssText = 'width:36px;height:36px;border-radius:8px;border:1px solid rgba(123,91,245,0.4);background:rgba(123,91,245,0.15);color:#ccc;font-size:1.2rem;cursor:pointer;font-family:PlusJakartaSans,sans-serif;';
-
-                var resetBtn = document.createElement('button');
-                resetBtn.textContent = 'Reset';
-                resetBtn.setAttribute('tabindex', '0');
-                resetBtn.style.cssText = 'padding:4px 12px;border-radius:6px;border:1px solid rgba(123,91,245,0.3);background:transparent;color:#888;font-size:0.75rem;cursor:pointer;font-family:PlusJakartaSans,sans-serif;';
-
-                btnMinus.onclick = function() {
-                    var d = setDelay(getDelay() - STEP);
-                    display.textContent = d + 'ms';
-                    log('Delay set to', d + 'ms (settings)');
+                row.onfocus = function() { this.setAttribute('focused', ''); };
+                row.onblur = function() { this.removeAttribute('focused'); };
+                row.onkeydown = function(e) {
+                    if (e.keyCode === 37) { // left arrow — decrease
+                        e.preventDefault();
+                        var d = setDelay(getDelay() - STEP);
+                        var s = d >= 0 ? '+' : '';
+                        delayLabel.textContent = 'Audio Delay: ' + s + d + 'ms  (\u2190\u2192 to adjust)';
+                        log('Delay set to', d + 'ms (D-pad)');
+                    } else if (e.keyCode === 39) { // right arrow — increase
+                        e.preventDefault();
+                        var d2 = setDelay(getDelay() + STEP);
+                        var s2 = d2 >= 0 ? '+' : '';
+                        delayLabel.textContent = 'Audio Delay: ' + s2 + d2 + 'ms  (\u2190\u2192 to adjust)';
+                        log('Delay set to', d2 + 'ms (D-pad)');
+                    } else if (e.keyCode === 13) { // Enter — reset to 0
+                        e.preventDefault();
+                        setDelay(0);
+                        delayLabel.textContent = 'Audio Delay: +0ms  (\u2190\u2192 to adjust)';
+                        log('Delay reset to 0ms (D-pad Enter)');
+                    }
                 };
-                btnPlus.onclick = function() {
-                    var d = setDelay(getDelay() + STEP);
-                    display.textContent = d + 'ms';
-                    log('Delay set to', d + 'ms (settings)');
-                };
-                resetBtn.onclick = function() {
-                    setDelay(0);
-                    display.textContent = '0ms';
-                    log('Delay reset to 0ms');
-                };
 
-                row.appendChild(btnMinus);
-                row.appendChild(display);
-                row.appendChild(btnPlus);
-                row.appendChild(resetBtn);
                 return row;
             }
         });
