@@ -2238,17 +2238,24 @@
         var anyLabel = anyOption ? anyOption.querySelector('[class*="label-"]') : null;
         var labelCls = anyLabel ? anyLabel.className : 'label-ZUqct';
 
-        // toggle class: find a row that has a toggle pill (from right-col sub-pages)
+        // toggle class: find a row that has a toggle pill
         var anyToggle = document.querySelector('[class*="toggle-"]');
-        var toggleCls = anyToggle ? anyToggle.className.replace(' checked', '').trim() : 'toggle-EKrug';
+        var toggleCls = anyToggle ? anyToggle.className.replace(/\bchecked\b/g, '').trim() : 'toggle-EKrug';
 
-        // scroll container and list classes: from right column
+        // Right column: inner-lJOeL's second child
+        // Left column is children[0], right column is children[1]
         var innerEl = document.querySelector('[class*="inner-"]');
         var rightCol = innerEl ? innerEl.children[1] : null;
-        var scrollEl = rightCol ? rightCol.firstElementChild : null;
-        var listEl = scrollEl ? scrollEl.firstElementChild : null;
-        var scrollCls = scrollEl ? scrollEl.className : 'scroll-container-vsSy7';
-        var listCls = listEl ? listEl.className : 'list-pGB6u';
+
+        // Derive scroll/list classes from the right column's current content,
+        // OR fall back to left column's structure (same classes are shared)
+        var leftCol = innerEl ? innerEl.children[0] : null;
+        var refScrollEl = (rightCol && rightCol.firstElementChild && rightCol.firstElementChild.firstElementChild)
+            ? rightCol.firstElementChild
+            : (leftCol ? leftCol.firstElementChild : null);
+        var refListEl = refScrollEl ? refScrollEl.firstElementChild : null;
+        var scrollCls = refScrollEl ? refScrollEl.className : 'scroll-container-vsSy7';
+        var listCls = refListEl ? refListEl.className : 'list-pGB6u';
 
         return { optionCls: optionCls, labelCls: labelCls, toggleCls: toggleCls, scrollCls: scrollCls, listCls: listCls, rightCol: rightCol };
     }
@@ -2336,17 +2343,30 @@
         log('VIDAA panel shown in right column with', items.length, 'toggles');
     }
 
-    // ─── Find left column (has Interface/About entries) ───────────
+    // ─── Find left column list and "About" item ───────────────────
+    // The settings layout: inner-lJOeL > [leftCol, rightCol]
+    // leftCol > scroll-container > list-pGB6u > option rows (Interface, Playback, etc.)
     function findLeftColAndAbout() {
-        var allOptions = document.querySelectorAll('[class*="option-"]');
-        var aboutOption = null;
-        var leftList = null;
+        var innerEl = document.querySelector('[class*="inner-"]');
+        if (!innerEl) return { aboutOption: null, leftList: null };
 
-        for (var i = 0; i < allOptions.length; i++) {
-            var text = (allOptions[i].textContent || '').trim().toLowerCase();
+        var leftCol = innerEl.children[0];
+        if (!leftCol) return { aboutOption: null, leftList: null };
+
+        // The list is: leftCol > scrollEl > listEl
+        var scrollEl = leftCol.firstElementChild;
+        var leftList = scrollEl ? scrollEl.firstElementChild : null;
+        if (!leftList) return { aboutOption: null, leftList: null };
+
+        // Find "About" option within the left list only
+        var opts = leftList.querySelectorAll('[class*="option-"]');
+        var aboutOption = null;
+        for (var i = 0; i < opts.length; i++) {
+            // Use label child text only, not full textContent (which includes SVG title text)
+            var labelEl = opts[i].querySelector('[class*="label-"]');
+            var text = labelEl ? labelEl.textContent.trim().toLowerCase() : (opts[i].textContent || '').trim().toLowerCase();
             if (text === 'about') {
-                aboutOption = allOptions[i];
-                leftList = allOptions[i].parentNode;
+                aboutOption = opts[i];
                 break;
             }
         }
