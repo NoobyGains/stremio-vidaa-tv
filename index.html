@@ -2216,10 +2216,6 @@
         var container = bgBlurOption.parentNode;
         if (!container) return;
 
-        // Get toggle class from Background Blur (strip any checked state)
-        var toggleEl = bgBlurOption.querySelector('[class*="toggle-"]');
-        var toggleClass = toggleEl ? toggleEl.className.replace(/\bchecked\b/g, '').trim() : 'toggle-EKrug';
-
         // Marker to prevent double-injection
         var marker = document.createElement('div');
         marker.id = 'vidaa-injected-marker';
@@ -2242,7 +2238,9 @@
 
             var cloneToggle = clone.querySelector('[class*="toggle-"]');
             if (cloneToggle) {
-                cloneToggle.className = toggleClass + (enabled ? ' checked' : '');
+                // Preserve all original classes — only add/remove checked
+                cloneToggle.classList.remove('checked');
+                if (enabled) cloneToggle.classList.add('checked');
             }
 
             (function(el, config, togEl) {
@@ -2284,7 +2282,6 @@
         var exitToggle = exitClone.querySelector('[class*="toggle-"]');
         if (exitToggle) exitToggle.remove();
         exitClone.setAttribute('tabindex', '0');
-        exitClone.style.marginTop = '1rem';
         exitClone.onclick = null;
         exitClone.addEventListener('click', function() { if (window.__exitApp) window.__exitApp(); });
         exitClone.addEventListener('keydown', function(e) { if (e.keyCode === 13) { if (window.__exitApp) window.__exitApp(); } });
