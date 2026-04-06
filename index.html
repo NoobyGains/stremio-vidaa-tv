@@ -2354,40 +2354,58 @@
 
         var cls = getClassNames();
 
-        // Clone "About" to make VIDAA button — keeps arrow SVG, same structure
-        var vidaaBtn = aboutOption.cloneNode(true);
-        stripReact(vidaaBtn);
+        // Build VIDAA button from scratch — copying class names from About
+        // (Don't cloneNode — React's document-level event delegation swallows clicks on clones)
+        var vidaaBtn = document.createElement('div');
         vidaaBtn.id = 'vidaa-nav-btn';
-        vidaaBtn.removeAttribute('focused');
-        // Remove any selected/active class variants
-        vidaaBtn.className = vidaaBtn.className.replace(/\bselected-\S+/g, '').trim();
+        vidaaBtn.className = aboutOption.className.replace(/\bselected-\S+/g, '').trim();
+        vidaaBtn.setAttribute('tabindex', '0');
 
-        var navLabel = vidaaBtn.querySelector('[class*="label-"]');
-        if (navLabel) navLabel.textContent = 'VIDAA';
+        // Copy the label structure
+        var aboutLabelEl = aboutOption.querySelector('[class*="label-"]');
+        var vidaaLabel = document.createElement('div');
+        if (aboutLabelEl) vidaaLabel.className = aboutLabelEl.className;
+        vidaaLabel.textContent = 'VIDAA';
+        vidaaBtn.appendChild(vidaaLabel);
 
-        addFocusHandlers(vidaaBtn);
-        vidaaBtn.onclick = null;
+        // Copy the arrow SVG (last svg in About is the chevron-right)
+        var aboutArrows = aboutOption.querySelectorAll('svg');
+        if (aboutArrows.length > 0) {
+            var arrowSvg = aboutArrows[aboutArrows.length - 1].cloneNode(true);
+            // Strip React from just the SVG
+            stripReact(arrowSvg);
+            vidaaBtn.appendChild(arrowSvg);
+        }
 
-        (function(btn, clsRef) {
-            btn.addEventListener('click', function(e) {
+        // Copy the icon SVG if present (first svg is the icon)
+        if (aboutArrows.length > 1) {
+            var iconSvg = aboutArrows[0].cloneNode(true);
+            stripReact(iconSvg);
+            vidaaBtn.insertBefore(iconSvg, vidaaBtn.firstChild);
+        }
+
+        // Focus handlers for D-pad
+        vidaaBtn.addEventListener('focus', function() { vidaaBtn.setAttribute('focused', ''); });
+        vidaaBtn.addEventListener('blur', function() { vidaaBtn.removeAttribute('focused'); });
+
+        // Click handler — shows toggle panel in right column
+        vidaaBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            var freshCls = getClassNames();
+            showVidaaPanelInRightCol(freshCls);
+            vidaaBtn.setAttribute('focused', '');
+        }, true); // capture phase
+
+        vidaaBtn.addEventListener('keydown', function(e) {
+            if (e.keyCode === 13 || e.keyCode === 32) {
+                e.preventDefault();
                 e.stopPropagation();
-                // Re-derive class names at click time for accuracy
+                e.stopImmediatePropagation();
                 var freshCls = getClassNames();
                 showVidaaPanelInRightCol(freshCls);
-                // Highlight VIDAA as selected (remove selected from siblings, add to this)
-                var siblings = btn.parentNode ? btn.parentNode.querySelectorAll('[class*="option-"]') : [];
-                for (var s = 0; s < siblings.length; s++) {
-                    siblings[s].removeAttribute('focused');
-                }
-                btn.setAttribute('focused', '');
-            });
-            btn.addEventListener('keydown', function(e) {
-                if (e.keyCode === 13 || e.keyCode === 32) {
-                    e.preventDefault();
-                    btn.click();
-                }
-            });
-        })(vidaaBtn, cls);
+            }
+        }, true);
 
         // Append after "About" in the left column
         if (aboutOption.nextSibling) {
