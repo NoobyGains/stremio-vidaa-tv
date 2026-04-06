@@ -974,18 +974,18 @@
             }
         }, 2000);
 
-        // Register settings toggle (waits for the toggle system to be ready)
+        // Register settings toggle (waits for the VIDAA settings tab system to be ready)
         var regInterval = setInterval(function() {
-            if (!window.__registerCommunityToggle) return;
+            if (!window.__registerVidaaSettingsItem) return;
             clearInterval(regInterval);
 
-            window.__registerCommunityToggle({
+            window.__registerVidaaSettingsItem({
                 id: 'toggle-720p-zoom',
-                lsKey: ZOOM_KEY,
-                title: '720p UI Zoom Correction',
+                type: 'toggle',
+                label: '720p UI Zoom Correction',
                 description: 'Scales the UI for 720p projectors/TVs. Turn off if video has wrong aspect ratio.',
+                lsKey: ZOOM_KEY,
                 onToggle: function(enabled) {
-                    // Toggle system already sets lsKey to 'true'/'false'
                     if (enabled) {
                         applyZoom();
                     } else {
@@ -993,7 +993,7 @@
                     }
                 }
             });
-        }, 500);
+        }, 200);
     })();
 </script>
 <script>
@@ -1015,8 +1015,7 @@
 </script>
 <script>
 // #6 — Exit button for VIDAA TV
-// Injects an "Exit App" option into the sidebar/settings area.
-// Uses Hisense_Exit() or window.close() as fallback.
+// Exit logic — UI is now registered via the VIDAA settings tab system.
 (function() {
     function exitApp() {
         console.log('[exit] Attempting to exit app');
@@ -1025,55 +1024,6 @@
         try { window.close(); } catch(e) {}
     }
     window.__exitApp = exitApp;
-
-    // Inject exit button into settings page when it loads
-    var lastCheck = '';
-    setInterval(function() {
-        var hash = window.location.hash || '';
-        if (hash.indexOf('#/settings') !== 0) { lastCheck = ''; return; }
-        if (lastCheck === hash) return;
-        lastCheck = hash;
-
-        // Wait for settings DOM to render
-        setTimeout(function() {
-            if (document.getElementById('vidaa-exit-btn')) return;
-            // Find the settings container — look for the scrollable settings area
-            var containers = document.querySelectorAll('[class*="settings"]');
-            var target = null;
-            for (var i = 0; i < containers.length; i++) {
-                if (containers[i].scrollHeight > 100) { target = containers[i]; break; }
-            }
-            if (!target) {
-                // Fallback: find any large scrollable container in settings
-                var divs = document.querySelectorAll('div');
-                for (var j = divs.length - 1; j >= 0; j--) {
-                    if (divs[j].scrollHeight > 300 && divs[j].children.length > 2) {
-                        target = divs[j]; break;
-                    }
-                }
-            }
-            if (!target) return;
-
-            var exitDiv = document.createElement('div');
-            exitDiv.id = 'vidaa-exit-btn';
-            exitDiv.className = 'option-pCk4g';
-            exitDiv.setAttribute('tabindex', '0');
-            exitDiv.style.cssText = 'margin-top:1rem;';
-
-            var exitLabel = document.createElement('div');
-            exitLabel.className = 'label-ZUqct';
-            exitLabel.style.cssText = 'color:#f87171;';
-            exitLabel.textContent = 'Exit Stremio';
-            exitDiv.appendChild(exitLabel);
-
-            exitDiv.onfocus = function() { this.setAttribute('focused', ''); };
-            exitDiv.onblur = function() { this.removeAttribute('focused'); };
-            exitDiv.onclick = exitApp;
-            exitDiv.onkeydown = function(e) { if (e.keyCode === 13 || e.keyCode === 32) exitApp(); };
-            target.appendChild(exitDiv);
-            console.log('[exit] Exit button injected into settings');
-        }, 800);
-    }, 1000);
 })();
 </script>
 <script>
@@ -2143,84 +2093,29 @@
         }
     }, true);
 
-    // ─── Settings Toggle Injection ────────────────────────────────
-    var lastSettingsCheck = '';
-    setInterval(function() {
-        var hash = window.location.hash || '';
-        if (hash.indexOf('#/settings') !== 0) { lastSettingsCheck = ''; return; }
-        if (lastSettingsCheck === hash) return;
-        lastSettingsCheck = hash;
-
-        setTimeout(function() {
-            if (document.getElementById('webtorrent-toggle')) return;
-
-            // Find settings container (same approach as exit button patch)
-            var containers = document.querySelectorAll('[class*="settings"]');
-            var target = null;
-            for (var i = 0; i < containers.length; i++) {
-                if (containers[i].scrollHeight > 100) { target = containers[i]; break; }
-            }
-            if (!target) {
-                var divs = document.querySelectorAll('div');
-                for (var j = divs.length - 1; j >= 0; j--) {
-                    if (divs[j].scrollHeight > 300 && divs[j].children.length > 2) {
-                        target = divs[j]; break;
-                    }
-                }
-            }
-            if (!target) return;
-
-            var enabled = isEnabled();
-
-            var toggleDiv = document.createElement('div');
-            toggleDiv.id = 'webtorrent-toggle';
-            toggleDiv.className = 'option-pCk4g';
-            toggleDiv.setAttribute('tabindex', '0');
-
-            var labelDiv = document.createElement('div');
-            labelDiv.className = 'label-ZUqct';
-            labelDiv.textContent = 'Direct Torrent Streaming';
-            toggleDiv.appendChild(labelDiv);
-
-            var indicatorDiv = document.createElement('div');
-            indicatorDiv.id = 'wt-toggle-indicator';
-            indicatorDiv.className = 'toggle-EKrug' + (enabled ? ' checked' : '');
-            toggleDiv.appendChild(indicatorDiv);
-
-            function doToggle() {
-                var nowEnabled = !isEnabled();
+    // ─── Settings Toggle Registration ────────────────────────────────
+    // Register with the unified VIDAA settings tab system
+    var wtRegInterval = setInterval(function() {
+        if (!window.__registerVidaaSettingsItem) return;
+        clearInterval(wtRegInterval);
+        window.__registerVidaaSettingsItem({
+            id: 'webtorrent-toggle',
+            type: 'toggle',
+            label: 'Direct Torrent Streaming',
+            description: 'Stream magnet links directly in the browser via WebTorrent',
+            lsKey: LS_KEY,
+            onToggle: function(nowEnabled) {
                 setEnabled(nowEnabled);
-                if (nowEnabled) {
-                    indicatorDiv.className = 'toggle-EKrug checked';
-                } else {
-                    indicatorDiv.className = 'toggle-EKrug';
-                }
                 log('WebTorrent toggled:', nowEnabled ? 'ON' : 'OFF');
-
-                // Pre-load library when enabling
                 if (nowEnabled && !clientLoaded) {
                     loadWebTorrentLib(function(err) {
                         if (err) log('Failed to pre-load library');
                     });
                 }
             }
-
-            toggleDiv.onclick = doToggle;
-            toggleDiv.onkeydown = function(e) { if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); doToggle(); } };
-            toggleDiv.onfocus = function() { this.setAttribute('focused', ''); };
-            toggleDiv.onblur = function() { this.removeAttribute('focused'); };
-
-            // Insert before exit button if it exists, otherwise append
-            var exitBtn = document.getElementById('vidaa-exit-btn');
-            if (exitBtn) {
-                target.insertBefore(toggleDiv, exitBtn);
-            } else {
-                target.appendChild(toggleDiv);
-            }
-
-            log('Settings toggle injected');
-        }, 800);
-    }, 1000);
+        });
+        log('WebTorrent registered with VIDAA settings tab');
+    }, 200);
 
     // ─── Programmatic API ─────────────────────────────────────────
     window.__toggleWebTorrent = function() {
@@ -2254,20 +2149,133 @@
 </script>
 <script>
 // ═══════════════════════════════════════════════════════════════════════
-// Community-Requested Features (#17–#21)
-// All features default to OFF and must be enabled via Settings toggles.
+// VIDAA Settings Tab System
+// Creates a dedicated "VIDAA" tab in the Stremio settings sidebar.
+// All VIDAA toggles register via window.__registerVidaaSettingsItem(cfg).
+// Legacy window.__registerCommunityToggle is aliased for compatibility.
 // ═══════════════════════════════════════════════════════════════════════
-
-// ─── Shared: Settings Toggle Injector ─────────────────────────────────
-// Reusable function to inject a purple toggle switch into the Settings page.
-// Each feature calls this with its own config.
 (function() {
     'use strict';
 
-    var pendingToggles = [];
+    var LOG = '[settings]';
+    var registeredItems = [];
+    var tabInjected = false;
+    var panelVisible = false;
+    var hiddenContent = null;
+    var vidaaPanelEl = null;
+    var lastHash = '';
 
-    function createToggle(cfg) {
-        // cfg: { id, lsKey, title, description, onToggle, extraContent }
+    function log() {
+        var args = [LOG];
+        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        console.log.apply(console, args);
+    }
+
+    // ─── Public API ────────────────────────────────────────────────
+    // cfg: { id, type ('toggle'|'slider'), label, description, lsKey, onToggle, extraContent }
+    window.__vidaaSettingsItems = registeredItems;
+
+    window.__registerVidaaSettingsItem = function(cfg) {
+        // Avoid duplicates
+        for (var i = 0; i < registeredItems.length; i++) {
+            if (registeredItems[i].id === cfg.id) return;
+        }
+        registeredItems.push(cfg);
+        log('Registered item:', cfg.id);
+        // If panel is already visible, re-render it
+        if (panelVisible && vidaaPanelEl) {
+            renderPanelItems(vidaaPanelEl);
+        }
+    };
+
+    // Backward-compat alias for the old community toggle API
+    // cfg: { id, lsKey, title, description, onToggle, extraContent }
+    window.__registerCommunityToggle = function(cfg) {
+        window.__registerVidaaSettingsItem({
+            id: cfg.id,
+            type: 'toggle',
+            label: cfg.title,
+            description: cfg.description,
+            lsKey: cfg.lsKey,
+            onToggle: cfg.onToggle,
+            extraContent: cfg.extraContent
+        });
+    };
+
+    // ─── Tab Injection ─────────────────────────────────────────────
+    function findTabsContainer() {
+        // Primary: class containing 'tabs-'
+        var tabsWr = document.querySelector('[class*="tabs-"]');
+        if (tabsWr && tabsWr.querySelector('[class*="tab-"]')) return tabsWr;
+        return null;
+    }
+
+    function findContentArea() {
+        // The right-hand panel — element next to the navbar that holds option rows
+        var navbar = document.querySelector('[class*="navbar-"]');
+        if (navbar && navbar.nextElementSibling) return navbar.nextElementSibling;
+        // Fallback: find a container that holds option-pCk4g rows
+        var options = document.querySelectorAll('[class*="option-"]');
+        if (options.length > 0 && options[0].parentNode) return options[0].parentNode;
+        return null;
+    }
+
+    function injectVidaaTab() {
+        if (document.getElementById('vidaa-settings-tab')) return true;
+
+        var tabsContainer = findTabsContainer();
+        if (!tabsContainer) return false;
+
+        var tab = document.createElement('div');
+        tab.id = 'vidaa-settings-tab';
+        // Copy native tab class
+        var existingTab = tabsContainer.querySelector('[class*="tab-"]');
+        if (existingTab) tab.className = existingTab.className;
+
+        var icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('viewBox', '0 0 24 24');
+        icon.setAttribute('fill', 'none');
+        icon.setAttribute('stroke', 'currentColor');
+        icon.setAttribute('stroke-width', '2');
+        // Copy icon class from existing tab icon
+        var existingIcon = existingTab && existingTab.querySelector('[class*="icon-"]');
+        if (existingIcon) icon.className.baseVal = existingIcon.className.baseVal;
+        icon.style.cssText = 'width:2rem;height:2rem;flex-shrink:0;';
+
+        var path1 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        path1.setAttribute('x', '3'); path1.setAttribute('y', '3');
+        path1.setAttribute('width', '18'); path1.setAttribute('height', '18');
+        path1.setAttribute('rx', '3');
+        icon.appendChild(path1);
+
+        var path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path2.setAttribute('d', 'M8 8h8M8 12h5M12 16l-2-2h4l-2 2z');
+        icon.appendChild(path2);
+
+        var label = document.createElement('div');
+        // Copy label class from existing tab
+        var existingLabel = existingTab && existingTab.querySelector('[class*="label-"]');
+        if (existingLabel) label.className = existingLabel.className;
+        label.textContent = 'VIDAA';
+
+        tab.appendChild(icon);
+        tab.appendChild(label);
+        tab.setAttribute('tabindex', '0');
+
+        tab.addEventListener('click', function() { activateVidaaTab(); });
+        tab.addEventListener('keydown', function(e) {
+            if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); activateVidaaTab(); }
+        });
+        tab.addEventListener('focus', function() { tab.setAttribute('focused', ''); });
+        tab.addEventListener('blur', function() { tab.removeAttribute('focused'); });
+
+        tabsContainer.appendChild(tab);
+        log('VIDAA tab injected into sidebar');
+        return true;
+    }
+
+    // ─── Panel Creation ────────────────────────────────────────────
+    function buildToggleRow(cfg) {
         var enabled = false;
         try { enabled = localStorage.getItem(cfg.lsKey) === 'true'; } catch(e) {}
 
@@ -2278,7 +2286,7 @@
 
         var labelDiv = document.createElement('div');
         labelDiv.className = 'label-ZUqct';
-        labelDiv.textContent = cfg.title;
+        labelDiv.textContent = cfg.label;
         wrapper.appendChild(labelDiv);
 
         var indicator = document.createElement('div');
@@ -2293,76 +2301,229 @@
             if (cfg.onToggle) cfg.onToggle(now);
         }
 
-        wrapper.onclick = doToggle;
-        wrapper.onkeydown = function(e) { if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); doToggle(); } };
-        wrapper.onfocus = function() { this.setAttribute('focused', ''); };
-        wrapper.onblur = function() { this.removeAttribute('focused'); };
+        wrapper.addEventListener('click', doToggle);
+        wrapper.addEventListener('keydown', function(e) {
+            if (e.keyCode === 13 || e.keyCode === 32) { e.preventDefault(); doToggle(); }
+        });
+        wrapper.addEventListener('focus', function() { wrapper.setAttribute('focused', ''); });
+        wrapper.addEventListener('blur', function() { wrapper.removeAttribute('focused'); });
 
-        return { wrapper: wrapper, extra: cfg.extraContent ? cfg.extraContent(enabled) : null };
+        return wrapper;
     }
 
-    function registerToggle(cfg) {
-        pendingToggles.push(cfg);
+    function renderPanelItems(panel) {
+        // Clear existing items (keep the header)
+        var header = panel.querySelector('#vidaa-panel-header');
+        while (panel.lastChild && panel.lastChild !== header) {
+            panel.removeChild(panel.lastChild);
+        }
+
+        for (var i = 0; i < registeredItems.length; i++) {
+            var cfg = registeredItems[i];
+            var row = buildToggleRow(cfg);
+            panel.appendChild(row);
+
+            // Extra content (e.g. audio delay controls row)
+            if (cfg.extraContent) {
+                var enabled = false;
+                try { enabled = localStorage.getItem(cfg.lsKey) === 'true'; } catch(e) {}
+                var extra = cfg.extraContent(enabled);
+                if (extra) panel.appendChild(extra);
+            }
+        }
+
+        // Exit Stremio at the bottom
+        var exitDiv = document.createElement('div');
+        exitDiv.id = 'vidaa-panel-exit';
+        exitDiv.className = 'option-pCk4g';
+        exitDiv.setAttribute('tabindex', '0');
+        exitDiv.style.cssText = 'margin-top:1.5rem;';
+        var exitLabel = document.createElement('div');
+        exitLabel.className = 'label-ZUqct';
+        exitLabel.style.color = '#f87171';
+        exitLabel.textContent = 'Exit Stremio';
+        exitDiv.appendChild(exitLabel);
+        exitDiv.addEventListener('click', function() { if (window.__exitApp) window.__exitApp(); });
+        exitDiv.addEventListener('keydown', function(e) { if (e.keyCode === 13 || e.keyCode === 32) { if (window.__exitApp) window.__exitApp(); } });
+        exitDiv.addEventListener('focus', function() { exitDiv.setAttribute('focused', ''); });
+        exitDiv.addEventListener('blur', function() { exitDiv.removeAttribute('focused'); });
+        panel.appendChild(exitDiv);
+
+        log('Panel rendered with', registeredItems.length, 'items');
     }
 
-    // Poll for Settings page and inject all registered toggles
-    var lastSettingsHash = '';
+    function createVidaaPanel() {
+        var panel = document.createElement('div');
+        panel.id = 'vidaa-settings-panel';
+        panel.style.cssText = 'flex:1;overflow-y:auto;padding:2rem 3rem;box-sizing:border-box;';
+
+        var header = document.createElement('div');
+        header.id = 'vidaa-panel-header';
+        header.style.cssText = 'padding-bottom:1.5rem;color:hsla(0,0%,100%,0.9);font-size:1.4rem;font-weight:700;border-bottom:1px solid hsla(0,0%,100%,0.1);margin-bottom:1rem;';
+        header.textContent = 'VIDAA Settings';
+        panel.appendChild(header);
+
+        renderPanelItems(panel);
+        return panel;
+    }
+
+    // ─── Tab Activation / Deactivation ────────────────────────────
+    function getSelectedClass() {
+        // Derive the 'selected' class name from an already-selected tab
+        var selectedTab = document.querySelector('[class*="tab-"][class*="selected-"]');
+        if (selectedTab) {
+            var classes = selectedTab.className.split(' ');
+            for (var c = 0; c < classes.length; c++) {
+                if (classes[c].indexOf('selected-') === 0) return classes[c];
+            }
+        }
+        return 'selected-L5m7b';
+    }
+
+    function activateVidaaTab() {
+        var contentArea = findContentArea();
+        if (!contentArea) { log('Cannot find content area'); return; }
+
+        var tab = document.getElementById('vidaa-settings-tab');
+        if (!tab) return;
+
+        var selectedClass = getSelectedClass();
+
+        // Deselect all native tabs
+        var allTabs = document.querySelectorAll('[class*="tabs-"] [class*="tab-"]');
+        for (var i = 0; i < allTabs.length; i++) {
+            allTabs[i].className = allTabs[i].className.replace(new RegExp('\\s*' + selectedClass, 'g'), '').trim();
+        }
+
+        // Select our tab
+        if (tab.className.indexOf(selectedClass) === -1) {
+            tab.className = tab.className + ' ' + selectedClass;
+        }
+
+        // Hide native content, show our panel
+        if (!panelVisible) {
+            hiddenContent = contentArea;
+            hiddenContent.style.display = 'none';
+
+            vidaaPanelEl = createVidaaPanel();
+            // Insert after the navbar / tabs container
+            var navbar = document.querySelector('[class*="navbar-"]');
+            if (navbar && navbar.parentNode) {
+                navbar.parentNode.insertBefore(vidaaPanelEl, navbar.nextSibling);
+            } else {
+                contentArea.parentNode.appendChild(vidaaPanelEl);
+            }
+            panelVisible = true;
+            log('VIDAA panel shown');
+        } else {
+            renderPanelItems(vidaaPanelEl);
+        }
+    }
+
+    function deactivateVidaaTab() {
+        if (!panelVisible) return;
+
+        // Restore native content
+        if (hiddenContent) {
+            hiddenContent.style.display = '';
+            hiddenContent = null;
+        }
+
+        // Remove our panel
+        if (vidaaPanelEl) {
+            try { vidaaPanelEl.remove(); } catch(e) {}
+            vidaaPanelEl = null;
+        }
+
+        // Deselect our tab
+        var tab = document.getElementById('vidaa-settings-tab');
+        if (tab) {
+            var selectedClass = getSelectedClass();
+            tab.className = tab.className.replace(new RegExp('\\s*' + selectedClass, 'g'), '').trim();
+        }
+
+        panelVisible = false;
+        log('VIDAA panel hidden');
+    }
+
+    // ─── Hash / Navigation Watcher ─────────────────────────────────
+    // Uses MutationObserver + setInterval to re-inject tab after React re-renders
+    var settingsObserver = new MutationObserver(function() {
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/settings') !== 0) return;
+        if (!document.getElementById('vidaa-settings-tab')) {
+            tabInjected = false;
+        }
+        if (!tabInjected) {
+            if (injectVidaaTab()) tabInjected = true;
+        }
+    });
+
     setInterval(function() {
         var hash = window.location.hash || '';
-        if (hash.indexOf('#/settings') !== 0) { lastSettingsHash = ''; return; }
-        if (lastSettingsHash === hash) return;
-        lastSettingsHash = hash;
 
-        setTimeout(function() {
-            // Find settings container
-            var containers = document.querySelectorAll('[class*="settings"]');
-            var target = null;
-            for (var i = 0; i < containers.length; i++) {
-                if (containers[i].scrollHeight > 100) { target = containers[i]; break; }
+        // Left settings page — clean up
+        if (hash.indexOf('#/settings') !== 0) {
+            if (panelVisible) deactivateVidaaTab();
+            if (lastHash.indexOf('#/settings') === 0) {
+                // Just left settings — disconnect observer
+                settingsObserver.disconnect();
+                tabInjected = false;
             }
-            if (!target) {
-                var divs = document.querySelectorAll('div');
-                for (var j = divs.length - 1; j >= 0; j--) {
-                    if (divs[j].scrollHeight > 300 && divs[j].children.length > 2) {
-                        target = divs[j]; break;
-                    }
-                }
-            }
-            if (!target) return;
+            lastHash = hash;
+            return;
+        }
 
-            // Inject section header once, before WebTorrent toggle or exit button
-            var insertBefore = document.getElementById('webtorrent-toggle') || document.getElementById('vidaa-exit-btn') || null;
-            if (!document.getElementById('vidaa-section-header')) {
-                var header = document.createElement('div');
-                header.id = 'vidaa-section-header';
-                header.style.cssText = 'padding:1rem 2em 0.5rem;color:hsla(0,0%,100%,0.3);font-size:1rem;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;';
-                header.textContent = 'VIDAA Enhancements';
-                if (insertBefore) {
-                    target.insertBefore(header, insertBefore);
-                } else {
-                    target.appendChild(header);
-                }
-                // Update insertBefore so community toggles go after the header
-                insertBefore = document.getElementById('webtorrent-toggle') || document.getElementById('vidaa-exit-btn') || null;
-            }
+        // Entered settings page
+        if (lastHash.indexOf('#/settings') !== 0) {
+            log('Entered settings — starting tab injector');
+            settingsObserver.observe(document.body, { childList: true, subtree: true });
+        }
 
-            for (var k = 0; k < pendingToggles.length; k++) {
-                var cfg = pendingToggles[k];
-                if (document.getElementById(cfg.id)) continue;
-                var result = createToggle(cfg);
-                if (insertBefore) {
-                    target.insertBefore(result.wrapper, insertBefore);
-                    if (result.extra) target.insertBefore(result.extra, insertBefore);
-                } else {
-                    target.appendChild(result.wrapper);
-                    if (result.extra) target.appendChild(result.extra);
-                }
-            }
-        }, 800);
-    }, 1000);
+        lastHash = hash;
 
-    window.__registerCommunityToggle = registerToggle;
+        // Re-inject tab if it was wiped by React
+        if (!document.getElementById('vidaa-settings-tab')) {
+            tabInjected = false;
+            setTimeout(function() {
+                if (injectVidaaTab()) tabInjected = true;
+            }, 600);
+        }
+
+        // If our panel is showing but native tabs were re-rendered, reactivate
+        if (panelVisible && !document.getElementById('vidaa-settings-panel')) {
+            panelVisible = false;
+            hiddenContent = null;
+            activateVidaaTab();
+        }
+    }, 800);
+
+    // When user clicks a native tab while our panel is showing — deactivate
+    document.addEventListener('click', function(e) {
+        if (!panelVisible) return;
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/settings') !== 0) return;
+        // Check if click target is a native tab (not our tab)
+        var target = e.target;
+        while (target && target !== document.body) {
+            if (target.id === 'vidaa-settings-tab') return; // our tab — ignore
+            if (target.className && typeof target.className === 'string' &&
+                target.className.indexOf('tab-') !== -1 &&
+                target.id !== 'vidaa-settings-tab') {
+                deactivateVidaaTab();
+                return;
+            }
+            target = target.parentNode;
+        }
+    }, true);
+
+    log('VIDAA settings tab system loaded');
 })();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Community-Requested Features (#17–#21)
+// All features default to OFF and must be enabled via Settings toggles.
+// ═══════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════
 // #17 — Force Stereo Downmix
