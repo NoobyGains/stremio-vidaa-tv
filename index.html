@@ -904,35 +904,97 @@
 })();
 </script>
 <script>
-    // Detect VIDAA TV with 720p viewport
-    // ?nozoom=1 disables zoom correction entirely (for TVs where it causes aspect ratio issues)
-    setTimeout(function() {
-        window.screen720p = false;
-        var params = new URLSearchParams(window.location.search);
-        if (params.get('nozoom') === '1') {
-            console.log('[zoom] Zoom correction disabled via ?nozoom=1');
-            return;
+    // 720p Zoom Correction — togglable via Settings
+    // Detects VIDAA TVs/projectors reporting 720p viewport and scales the UI.
+    // Can be force-disabled via ?nozoom=1 or toggled off in Settings.
+    (function() {
+        var ZOOM_KEY = 'stremio_720p_zoom';
+        var zoomStyleEl = null;
+
+        function isZoomEnabled() {
+            var stored = localStorage.getItem(ZOOM_KEY);
+            if (stored === 'false' || stored === 'off') return false;
+            if (stored === 'true' || stored === 'on') return true;
+            return null; // auto-detect
         }
-        try {
-            // Only apply zoom on confirmed VIDAA projectors/720p devices
-            // Must have Hisense firmware API AND exactly 720p viewport AND wider than 16:9
-            // This prevents false positives on TVs that report 720 height but render at 1080p
-            if (typeof Hisense_GetFirmWareVersion === 'function' && Hisense_GetFirmWareVersion() && window.innerHeight === 720) {
-                // Additional check: only apply if the UI is actually clipped
-                // (screen.height vs innerHeight mismatch indicates true 720p reporting)
-                if (window.screen && window.screen.height && window.screen.height <= 720) {
-                    window.screen720p = true;
-                }
+
+        function applyZoom() {
+            if (zoomStyleEl) return; // already applied
+            zoomStyleEl = document.createElement('style');
+            zoomStyleEl.id = 'vidaa-720p-zoom';
+            zoomStyleEl.textContent = '#root { zoom: 0.65; } video, [class*="player"] video { zoom: 1 !important; width: 100vw !important; height: 100vh !important; }';
+            document.head.appendChild(zoomStyleEl);
+            console.log('[zoom] Applied 720p zoom correction');
+        }
+
+        function removeZoom() {
+            if (zoomStyleEl) { zoomStyleEl.remove(); zoomStyleEl = null; }
+            console.log('[zoom] Removed 720p zoom correction');
+        }
+
+        // Expose for toggle
+        window.__applyZoom = applyZoom;
+        window.__removeZoom = removeZoom;
+
+        setTimeout(function() {
+            window.screen720p = false;
+
+            // ?nozoom=1 URL param forces off
+            var params = new URLSearchParams(window.location.search);
+            if (params.get('nozoom') === '1') {
+                localStorage.setItem(ZOOM_KEY, 'false');
+                console.log('[zoom] Zoom disabled via ?nozoom=1');
+                return;
             }
-        } catch (e) {}
-        if (window.screen720p) {
-            // Apply zoom only to the app container, NOT the video player
-            var style = document.createElement('style');
-            style.textContent = '#root { zoom: 0.65; } video, [class*="player"] video { zoom: 1 !important; width: 100vw !important; height: 100vh !important; }';
-            document.head.appendChild(style);
-            console.log('[zoom] Applied 720p zoom correction (root only, video excluded)');
-        }
-    }, 2000);
+
+            var setting = isZoomEnabled();
+            if (setting === false) {
+                console.log('[zoom] Zoom disabled via settings');
+                return;
+            }
+
+            if (setting === true) {
+                // Forced on via settings
+                window.screen720p = true;
+                applyZoom();
+                return;
+            }
+
+            // Auto-detect: only on confirmed 720p VIDAA devices
+            try {
+                if (typeof Hisense_GetFirmWareVersion === 'function' && Hisense_GetFirmWareVersion() && window.innerHeight === 720) {
+                    if (window.screen && window.screen.height && window.screen.height <= 720) {
+                        window.screen720p = true;
+                    }
+                }
+            } catch (e) {}
+
+            if (window.screen720p) {
+                applyZoom();
+            }
+        }, 2000);
+
+        // Register settings toggle (waits for the toggle system to be ready)
+        var regInterval = setInterval(function() {
+            if (!window.__registerCommunityToggle) return;
+            clearInterval(regInterval);
+
+            window.__registerCommunityToggle({
+                id: 'toggle-720p-zoom',
+                lsKey: ZOOM_KEY,
+                title: '720p UI Zoom Correction',
+                description: 'Scales the UI for 720p projectors/TVs. Turn off if video has wrong aspect ratio.',
+                onToggle: function(enabled) {
+                    // Toggle system already sets lsKey to 'true'/'false'
+                    if (enabled) {
+                        applyZoom();
+                    } else {
+                        removeZoom();
+                    }
+                }
+            });
+        }, 500);
+    })();
 </script>
 <script>
 // #10 — Suppress F key crash
