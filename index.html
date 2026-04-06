@@ -2384,6 +2384,10 @@
             vidaaBtn.insertBefore(iconSvg, vidaaBtn.firstChild);
         }
 
+        // Ensure button is above the navbar backdrop overlay
+        vidaaBtn.style.position = 'relative';
+        vidaaBtn.style.zIndex = '100';
+
         // Focus handlers for D-pad
         vidaaBtn.addEventListener('focus', function() { vidaaBtn.setAttribute('focused', ''); });
         vidaaBtn.addEventListener('blur', function() { vidaaBtn.removeAttribute('focused'); });
