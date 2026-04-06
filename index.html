@@ -905,15 +905,32 @@
 </script>
 <script>
     // Detect VIDAA TV with 720p viewport
+    // ?nozoom=1 disables zoom correction entirely (for TVs where it causes aspect ratio issues)
     setTimeout(function() {
         window.screen720p = false;
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('nozoom') === '1') {
+            console.log('[zoom] Zoom correction disabled via ?nozoom=1');
+            return;
+        }
         try {
-            if (Hisense_GetFirmWareVersion() && window.innerHeight === 720) {
-                window.screen720p = true;
+            // Only apply zoom on confirmed VIDAA projectors/720p devices
+            // Must have Hisense firmware API AND exactly 720p viewport AND wider than 16:9
+            // This prevents false positives on TVs that report 720 height but render at 1080p
+            if (typeof Hisense_GetFirmWareVersion === 'function' && Hisense_GetFirmWareVersion() && window.innerHeight === 720) {
+                // Additional check: only apply if the UI is actually clipped
+                // (screen.height vs innerHeight mismatch indicates true 720p reporting)
+                if (window.screen && window.screen.height && window.screen.height <= 720) {
+                    window.screen720p = true;
+                }
             }
         } catch (e) {}
         if (window.screen720p) {
-            document.body.style.zoom = '65%';
+            // Apply zoom only to the app container, NOT the video player
+            var style = document.createElement('style');
+            style.textContent = '#root { zoom: 0.65; } video, [class*="player"] video { zoom: 1 !important; width: 100vw !important; height: 100vh !important; }';
+            document.head.appendChild(style);
+            console.log('[zoom] Applied 720p zoom correction (root only, video excluded)');
         }
     }, 2000);
 </script>
