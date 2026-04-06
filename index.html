@@ -904,55 +904,23 @@
 })();
 </script>
 <script>
-    // 720p Zoom Correction — togglable via Settings
-    // Detects VIDAA TVs/projectors reporting 720p viewport and scales the UI.
-    // Can be force-disabled via ?nozoom=1 or toggled off in Settings.
+    // 720p Zoom Correction — original behavior preserved
+    // Auto-detects VIDAA 720p viewport and applies zoom.
+    // Toggle in Settings allows users to disable if it causes issues (e.g. aspect ratio on some TVs).
     (function() {
         var ZOOM_KEY = 'stremio_720p_zoom';
-        var zoomStyleEl = null;
-
-        function isZoomEnabled() {
-            var stored = localStorage.getItem(ZOOM_KEY);
-            if (stored === 'false' || stored === 'off') return false;
-            if (stored === 'true' || stored === 'on') return true;
-            return null; // auto-detect
-        }
-
-        function applyZoom() {
-            if (zoomStyleEl) return; // already applied
-            zoomStyleEl = document.createElement('style');
-            zoomStyleEl.id = 'vidaa-720p-zoom';
-            // Use zoom on #root for full UI scaling, but DISABLE zoom when in player
-            // to prevent video aspect ratio issues (confirmed on 55Q6QV).
-            // A hash listener toggles zoom off/on when entering/leaving the player.
-            zoomStyleEl.textContent = '#root { zoom: 0.65; } #root.vidaa-in-player { zoom: 1; }';
-            document.head.appendChild(zoomStyleEl);
-
-            // Watch for player route to toggle zoom
-            function checkPlayerRoute() {
-                var root = document.getElementById('root');
-                if (!root) return;
-                var inPlayer = (window.location.hash || '').indexOf('#/player/') === 0;
-                if (inPlayer) {
-                    root.classList.add('vidaa-in-player');
-                } else {
-                    root.classList.remove('vidaa-in-player');
-                }
-            }
-            window.addEventListener('hashchange', checkPlayerRoute);
-            setInterval(checkPlayerRoute, 1000);
-            checkPlayerRoute();
-            console.log('[zoom] Applied 720p zoom (disabled in player)');
-        }
-
-        function removeZoom() {
-            if (zoomStyleEl) { zoomStyleEl.remove(); zoomStyleEl = null; }
-            console.log('[zoom] Removed 720p zoom correction');
-        }
 
         // Expose for toggle
-        window.__applyZoom = applyZoom;
-        window.__removeZoom = removeZoom;
+        window.__applyZoom = function() {
+            document.body.style.zoom = '65%';
+            window.screen720p = true;
+            console.log('[zoom] Applied 720p zoom');
+        };
+        window.__removeZoom = function() {
+            document.body.style.zoom = '';
+            window.screen720p = false;
+            console.log('[zoom] Removed 720p zoom');
+        };
 
         setTimeout(function() {
             window.screen720p = false;
@@ -965,30 +933,24 @@
                 return;
             }
 
-            var setting = isZoomEnabled();
-            if (setting === false) {
-                console.log('[zoom] Zoom disabled via settings');
-                return;
-            }
-
-            if (setting === true) {
-                // Forced on via settings
-                window.screen720p = true;
-                applyZoom();
-                return;
-            }
-
-            // Auto-detect: only on confirmed 720p VIDAA devices
+            // Check if user disabled via settings toggle
             try {
-                if (typeof Hisense_GetFirmWareVersion === 'function' && Hisense_GetFirmWareVersion() && window.innerHeight === 720) {
-                    if (window.screen && window.screen.height && window.screen.height <= 720) {
-                        window.screen720p = true;
-                    }
+                if (localStorage.getItem(ZOOM_KEY) === 'false') {
+                    console.log('[zoom] Zoom disabled via settings');
+                    return;
+                }
+            } catch(e) {}
+
+            // Original auto-detect: Hisense firmware + 720p viewport
+            try {
+                if (Hisense_GetFirmWareVersion() && window.innerHeight === 720) {
+                    window.screen720p = true;
                 }
             } catch (e) {}
 
             if (window.screen720p) {
-                applyZoom();
+                document.body.style.zoom = '65%';
+                console.log('[zoom] Auto-applied 720p zoom');
             }
         }, 2000);
 
