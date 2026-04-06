@@ -617,19 +617,24 @@
                         label: "VIDAA",
                         icon: "about",
                         options: (function() {
-                            // SolidJS only re-renders when reactive signals change.
-                            // localStorage is NOT reactive. Fix: read b() (settings signal)
-                            // inside checked() to make SolidJS track it, then call v({})
-                            // (empty updateSettings) after toggling to force re-render.
-                            function makeToggle(label, lsKey) {
+                            // Use g.animations() as reactive dependency — same signal
+                            // that Animations toggle uses. Toggle it off/on to force
+                            // SolidJS to re-evaluate all checked() in this section.
+                            function forceRerender() {
+                                var a = g.animations();
+                                g.setAnimations(!a);
+                                setTimeout(function() { g.setAnimations(a); }, 50);
+                            }
+                            function makeToggle(label, lsKey, extra) {
                                 return {
                                     label: label,
                                     options: [{
-                                        checked: () => { b(); return localStorage.getItem(lsKey) === 'true'; },
+                                        checked: () => { g.animations(); return localStorage.getItem(lsKey) === 'true'; },
                                         onClick: () => {
                                             var now = localStorage.getItem(lsKey) !== 'true';
                                             localStorage.setItem(lsKey, String(now));
-                                            v({ _vidaaToggle: Date.now() }); // trigger SolidJS re-render with unique value
+                                            forceRerender();
+                                            if (extra) extra(now);
                                             if (window.__vidaaSettingsItems) {
                                                 var c = window.__vidaaSettingsItems.find(function(i) { return i.lsKey === lsKey; });
                                                 if (c && c.onToggle) c.onToggle(now);
@@ -644,19 +649,10 @@
                                 makeToggle("Auto-Play Stream", "stremio_autoplay_best"),
                                 makeToggle("Mark Season", "stremio_mark_season"),
                                 makeToggle("Subtitle Drift Fix", "stremio_sub_drift_fix"),
-                                {
-                                    label: "720p Zoom",
-                                    options: [{
-                                        checked: () => { b(); return localStorage.getItem('stremio_720p_zoom') !== 'false'; },
-                                        onClick: () => {
-                                            var now = localStorage.getItem('stremio_720p_zoom') === 'false';
-                                            localStorage.setItem('stremio_720p_zoom', now ? 'true' : 'false');
-                                            v({});
-                                            if (now) { if (window.__applyZoom) window.__applyZoom(); }
-                                            else { if (window.__removeZoom) window.__removeZoom(); }
-                                        }
-                                    }]
-                                },
+                                makeToggle("720p Zoom", "stremio_720p_zoom", function(now) {
+                                    if (now) { if (window.__applyZoom) window.__applyZoom(); }
+                                    else { if (window.__removeZoom) window.__removeZoom(); }
+                                }),
                                 makeToggle("Torrent Streaming", "stremio_webtorrent_enabled"),
                                 makeToggle("Low Memory Mode", "stremio_low_memory"),
                                 makeToggle("Auto-Rebuffer", "stremio_auto_rebuffer"),
