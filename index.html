@@ -922,9 +922,12 @@
             if (zoomStyleEl) return; // already applied
             zoomStyleEl = document.createElement('style');
             zoomStyleEl.id = 'vidaa-720p-zoom';
-            zoomStyleEl.textContent = '#root { zoom: 0.65; } video, [class*="player"] video { zoom: 1 !important; width: 100vw !important; height: 100vh !important; }';
+            // Use font-size scaling instead of zoom — zoom breaks video aspect ratio
+            // on some VIDAA TVs (e.g. 55Q6QV). Reducing html font-size shrinks all
+            // rem-based UI elements without affecting the video player.
+            zoomStyleEl.textContent = 'html { font-size: 62.5% !important; }';
             document.head.appendChild(zoomStyleEl);
-            console.log('[zoom] Applied 720p zoom correction');
+            console.log('[zoom] Applied 720p UI scale (font-size method)');
         }
 
         function removeZoom() {
