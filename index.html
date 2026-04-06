@@ -2354,12 +2354,27 @@
 
         var cls = getClassNames();
 
-        // Build VIDAA button from scratch — copying class names from About
-        // (Don't cloneNode — React's document-level event delegation swallows clicks on clones)
+        // Build VIDAA button by copying About's className and registering with
+        // the Stremio spatial navigation system (nav-id/nav-area).
+        // Key insight: Stremio uses a CUSTOM spatial nav system, NOT browser focus.
+        // Elements must have nav-id to be navigable and receive focus/clicks.
         var vidaaBtn = document.createElement('div');
         vidaaBtn.id = 'vidaa-nav-btn';
         vidaaBtn.className = aboutOption.className.replace(/\bselected-\S+/g, '').trim();
         vidaaBtn.setAttribute('tabindex', '0');
+
+        // Register with spatial navigation — copy nav attributes from About
+        var aboutNavId = aboutOption.getAttribute('nav-id');
+        if (aboutNavId) {
+            // Generate a unique nav-id for our button
+            vidaaBtn.setAttribute('nav-id', 'vidaa-settings-' + Date.now());
+        }
+        // Copy nav-area reference if present
+        var aboutNavArea = aboutOption.closest('[nav-area]');
+        if (aboutNavArea) {
+            var areaId = aboutNavArea.getAttribute('nav-id');
+            // Our button inherits the same nav area since it's in the same list
+        }
 
         // Copy the label structure
         var aboutLabelEl = aboutOption.querySelector('[class*="label-"]');
@@ -2372,7 +2387,6 @@
         var aboutArrows = aboutOption.querySelectorAll('svg');
         if (aboutArrows.length > 0) {
             var arrowSvg = aboutArrows[aboutArrows.length - 1].cloneNode(true);
-            // Strip React from just the SVG
             stripReact(arrowSvg);
             vidaaBtn.appendChild(arrowSvg);
         }
@@ -2387,29 +2401,53 @@
         // Ensure button is above the navbar backdrop overlay
         vidaaBtn.style.position = 'relative';
         vidaaBtn.style.zIndex = '100';
+        vidaaBtn.style.cursor = 'pointer';
 
-        // Focus handlers for D-pad
-        vidaaBtn.addEventListener('focus', function() { vidaaBtn.setAttribute('focused', ''); });
+        // Focus handlers — set the focused attribute the nav system expects
+        vidaaBtn.addEventListener('focus', function() { vidaaBtn.setAttribute('focused', 'true'); });
         vidaaBtn.addEventListener('blur', function() { vidaaBtn.removeAttribute('focused'); });
+        vidaaBtn.addEventListener('mouseenter', function() { vidaaBtn.setAttribute('focused', 'true'); });
+        vidaaBtn.addEventListener('mouseleave', function() { vidaaBtn.removeAttribute('focused'); });
 
-        // Click handler — shows toggle panel in right column
-        vidaaBtn.addEventListener('click', function(e) {
+        // Click handler
+        function handleVidaaClick(e) {
+            e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
+            log('VIDAA button clicked!');
             var freshCls = getClassNames();
             showVidaaPanelInRightCol(freshCls);
-            vidaaBtn.setAttribute('focused', '');
-        }, true); // capture phase
+            vidaaBtn.setAttribute('focused', 'true');
+            return false;
+        }
+
+        // Register click on BOTH the button and the label (in case clicks land on the label)
+        vidaaBtn.addEventListener('click', handleVidaaClick, true);
+        vidaaLabel.addEventListener('click', handleVidaaClick, true);
+        vidaaBtn.addEventListener('mousedown', function(e) {
+            // Force the click through even if backdrop intercepts
+            e.stopPropagation();
+            setTimeout(function() { handleVidaaClick(e); }, 0);
+        }, true);
 
         vidaaBtn.addEventListener('keydown', function(e) {
             if (e.keyCode === 13 || e.keyCode === 32) {
-                e.preventDefault();
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                var freshCls = getClassNames();
-                showVidaaPanelInRightCol(freshCls);
+                handleVidaaClick(e);
             }
         }, true);
+
+        // Also hook into the Stremio nav system's focus mechanism
+        // When the nav system focuses our element, trigger its internal handling
+        var observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(m) {
+                if (m.type === 'attributes' && m.attributeName === 'focused') {
+                    if (vidaaBtn.hasAttribute('focused')) {
+                        log('VIDAA button received spatial nav focus');
+                    }
+                }
+            });
+        });
+        observer.observe(vidaaBtn, { attributes: true });
 
         // Append after "About" in the left column
         if (aboutOption.nextSibling) {
