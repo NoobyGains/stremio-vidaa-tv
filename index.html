@@ -30,13 +30,13 @@
     }
 
     /* Remove any stray light backgrounds and borders globally */
-    * {
+    #root * {
         border-color: rgba(255,255,255,0.06) !important;
     }
 
     /* Smooth transitions on all interactive elements */
     a, button, [focused], [tabindex] {
-        transition: all 0.15s ease-out !important;
+        transition: background-color 0.15s ease-out, opacity 0.15s ease-out, transform 0.15s ease-out, outline-color 0.15s ease-out !important;
     }
 
     /* Custom scrollbar (hidden for TV) */
@@ -371,9 +371,7 @@
 
     .video-xYWmH .indicator-BeMF_ {
         border-radius: 8px !important;
-        background-color: rgba(12,12,16,0.85) !important;
-        backdrop-filter: blur(4px) !important;
-        -webkit-backdrop-filter: blur(4px) !important;
+        background-color: rgba(12,12,16,0.9) !important;
     }
 
     /* ----- PLAYER ----- */
@@ -743,21 +741,7 @@
         color: #c4b5fd !important;
     }
 
-    /* ----- GLOBAL ACCENT OVERRIDES ----- */
-    /* Replace green accent (hsl(147.7, 68%, 51.7%)) with purple across the UI */
-
-    /* Selected indicators that use green */
-    .option-pCk4g.selected-nAGeS::before {
-        background-color: #7b5bf5 !important;
-    }
-
-    .option-McFMg.selected-LWWXM::after {
-        background-color: #7b5bf5 !important;
-    }
-
-    .option-pCk4g .toggle-EKrug.checked {
-        background-color: #7b5bf5 !important;
-    }
+    /* Duplicate accent overrides removed — already declared in Settings section above */
 
     /* ----- FOCUS RING REFINEMENT ----- */
     [focused] {
@@ -787,6 +771,9 @@
     <script>
     // XSS escape helper for dynamic innerHTML values
     function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function truncate(s, max) { if (!s || s.length <= max) return s; return s.substring(0, max) + '...'; }
+    function addFocusRing(el) { el.onfocus = function() { this.style.outline = '3px solid #a78bfa'; this.style.outlineOffset = '2px'; }; el.onblur = function() { this.style.outline = 'none'; }; }
+    window.__META_CACHE__ = {};
     </script>
     <script>
     // VIDAA keyboard fix v5 — intercept programmatic input.value changes
@@ -1673,7 +1660,7 @@
         if (window.__HERO_DATA__) { cb(window.__HERO_DATA__); return; }
         fetch(CINEMETA_URL).then(function(r) { return r.json(); }).then(function(data) {
             var metas = (data && data.metas) ? data.metas : [];
-            window.__HERO_DATA__ = metas;
+            if (metas.length) window.__HERO_DATA__ = metas;
             cb(metas);
         }).catch(function(e) {
             console.error('[hero] Fetch failed:', e);
@@ -1815,7 +1802,7 @@
             var dot = document.createElement('button');
             dot.className = 'hero-dot';
             dot.setAttribute('data-dot', String(d));
-            dot.setAttribute('tabindex', '0');
+            dot.setAttribute('tabindex', '-1');
             dot.style.cssText = 'width:10px;height:10px;border-radius:50%;border:none;cursor:pointer;padding:0;transition:background 0.3s,transform 0.3s;' + (d === 0 ? 'background:white;transform:scale(1.2);' : 'background:rgba(255,255,255,0.3);transform:scale(1);');
             dot.onfocus = function() { this.style.outline = '2px solid #a78bfa'; };
             dot.onblur = function() { this.style.outline = 'none'; };
@@ -1924,14 +1911,14 @@
         scrollWrap.addEventListener('keydown', function(e) {
             if (e.keyCode === 39) { // Right
                 var focused = document.activeElement;
-                if (focused && focused.nextElementSibling && focused.nextElementSibling.className === 'trending-card') {
+                if (focused && focused.nextElementSibling && focused.nextElementSibling.classList.contains('trending-card')) {
                     focused.nextElementSibling.focus();
                     e.preventDefault();
                     e.stopPropagation();
                 }
             } else if (e.keyCode === 37) { // Left
                 var focused2 = document.activeElement;
-                if (focused2 && focused2.previousElementSibling && focused2.previousElementSibling.className === 'trending-card') {
+                if (focused2 && focused2.previousElementSibling && focused2.previousElementSibling.classList.contains('trending-card')) {
                     focused2.previousElementSibling.focus();
                     e.preventDefault();
                     e.stopPropagation();
@@ -2081,9 +2068,19 @@
         var type = parts[0];
         var metaId = parts[1];
 
-        // Fetch meta from Cinemeta
+        // Fetch meta from Cinemeta (cached)
+        var cacheKey = type + '/' + metaId;
+        if (window.__META_CACHE__[cacheKey]) {
+            var cached = window.__META_CACHE__[cacheKey];
+            if (!document.getElementById('stremio-detail-pills')) {
+                var cp = buildPills(cached);
+                if (cp) { var te = document.querySelector('.title-OL31B'); if (te && te.parentNode) te.parentNode.insertBefore(cp, te.nextSibling); }
+            }
+            return;
+        }
         var apiUrl = 'https://v3-cinemeta.strem.io/meta/' + encodeURIComponent(type) + '/' + encodeURIComponent(metaId) + '.json';
         fetch(apiUrl).then(function(r) { return r.json(); }).then(function(data) {
+            if (data && data.meta) window.__META_CACHE__[cacheKey] = data.meta;
             if (!data || !data.meta) return;
             if (document.getElementById('stremio-detail-pills')) return;
 
@@ -2092,7 +2089,7 @@
             if (descEl) {
                 infoEl.insertBefore(pills, descEl);
             } else {
-                titleEl.parentNode.insertBefore(pills, titleEl.nextSibling);
+                if (titleEl.parentNode) titleEl.parentNode.insertBefore(pills, titleEl.nextSibling);
             }
             injectedPills = true;
         }).catch(function(e) {
