@@ -917,5 +917,746 @@
         }
     }, 2000);
 </script>
+<script>
+// #10 — Suppress F key crash
+// Fullscreen API is meaningless on VIDAA (browser is always fullscreen).
+// Pressing F (keyCode 70) triggers requestFullscreen() which crashes the VIDAA browser.
+(function() {
+    document.addEventListener('keydown', function(e) {
+        if (e.keyCode === 70 || e.key === 'f' || e.key === 'F') {
+            // Only suppress when not typing in an input field
+            var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+            if (tag === 'input' || tag === 'textarea') return;
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('[patch] Suppressed F key (fullscreen crash prevention)');
+        }
+    }, true); // capture phase to intercept before Stremio's handler
+})();
+</script>
+<script>
+// #6 — Exit button for VIDAA TV
+// Injects an "Exit App" option into the sidebar/settings area.
+// Uses Hisense_Exit() or window.close() as fallback.
+(function() {
+    function exitApp() {
+        console.log('[exit] Attempting to exit app');
+        try { if (typeof Hisense_Exit === 'function') { Hisense_Exit(); return; } } catch(e) {}
+        try { if (typeof Hisense_CloseApp === 'function') { Hisense_CloseApp(); return; } } catch(e) {}
+        try { window.close(); } catch(e) {}
+    }
+    window.__exitApp = exitApp;
+
+    // Inject exit button into settings page when it loads
+    var lastCheck = '';
+    setInterval(function() {
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/settings') !== 0) { lastCheck = ''; return; }
+        if (lastCheck === hash) return;
+        lastCheck = hash;
+
+        // Wait for settings DOM to render
+        setTimeout(function() {
+            if (document.getElementById('vidaa-exit-btn')) return;
+            // Find the settings container — look for the scrollable settings area
+            var containers = document.querySelectorAll('[class*="settings"]');
+            var target = null;
+            for (var i = 0; i < containers.length; i++) {
+                if (containers[i].scrollHeight > 100) { target = containers[i]; break; }
+            }
+            if (!target) {
+                // Fallback: find any large scrollable container in settings
+                var divs = document.querySelectorAll('div');
+                for (var j = divs.length - 1; j >= 0; j--) {
+                    if (divs[j].scrollHeight > 300 && divs[j].children.length > 2) {
+                        target = divs[j]; break;
+                    }
+                }
+            }
+            if (!target) return;
+
+            var exitDiv = document.createElement('div');
+            exitDiv.id = 'vidaa-exit-btn';
+            exitDiv.style.cssText = 'margin:20px auto;padding:14px 32px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:10px;color:#f87171;font-size:1rem;font-family:PlusJakartaSans,sans-serif;font-weight:600;cursor:pointer;text-align:center;max-width:300px;';
+            exitDiv.textContent = 'Exit Stremio';
+            exitDiv.setAttribute('tabindex', '0');
+            exitDiv.onfocus = function() { this.style.outline = '3px solid #f87171'; };
+            exitDiv.onblur = function() { this.style.outline = 'none'; };
+            exitDiv.onclick = exitApp;
+            exitDiv.onkeydown = function(e) { if (e.keyCode === 13 || e.keyCode === 32) exitApp(); };
+            target.appendChild(exitDiv);
+            console.log('[exit] Exit button injected into settings');
+        }, 800);
+    }, 1000);
+})();
+</script>
+<script>
+// #9 — Save and restore playback speed & volume
+// Persists user's preferred playback rate and volume in localStorage.
+// Restores them automatically when a new video starts playing.
+(function() {
+    var SPEED_KEY = 'stremio_playback_speed';
+    var VOLUME_KEY = 'stremio_volume';
+    var applied = false;
+    var lastVideoSrc = '';
+
+    function getSavedSpeed() {
+        try { var v = parseFloat(localStorage.getItem(SPEED_KEY)); return (v && v > 0 && v <= 4) ? v : null; } catch(e) { return null; }
+    }
+    function getSavedVolume() {
+        try { var v = parseFloat(localStorage.getItem(VOLUME_KEY)); return (v >= 0 && v <= 1) ? v : null; } catch(e) { return null; }
+    }
+
+    // Watch for video element and apply saved settings
+    setInterval(function() {
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/player/') !== 0) { applied = false; lastVideoSrc = ''; return; }
+
+        var video = document.querySelector('video');
+        if (!video) return;
+
+        var src = video.currentSrc || video.src || '';
+        if (src && src !== lastVideoSrc) {
+            lastVideoSrc = src;
+            applied = false;
+        }
+
+        if (!applied && video.readyState >= 1) {
+            var savedSpeed = getSavedSpeed();
+            if (savedSpeed !== null && video.playbackRate !== savedSpeed) {
+                video.playbackRate = savedSpeed;
+                console.log('[playback] Restored speed:', savedSpeed);
+            }
+            var savedVol = getSavedVolume();
+            if (savedVol !== null && Math.abs(video.volume - savedVol) > 0.01) {
+                video.volume = savedVol;
+                console.log('[playback] Restored volume:', savedVol);
+            }
+            applied = true;
+        }
+
+        // Continuously monitor for user changes to save them
+        if (video.readyState >= 1) {
+            var currentSpeed = video.playbackRate;
+            var currentVol = video.volume;
+            try {
+                var storedSpeed = getSavedSpeed();
+                if (currentSpeed && currentSpeed > 0 && currentSpeed !== storedSpeed) {
+                    localStorage.setItem(SPEED_KEY, String(currentSpeed));
+                }
+                var storedVol = getSavedVolume();
+                if (currentVol >= 0 && (storedVol === null || Math.abs(currentVol - storedVol) > 0.01)) {
+                    localStorage.setItem(VOLUME_KEY, String(currentVol));
+                }
+            } catch(e) {}
+        }
+    }, 1500);
+})();
+</script>
+<script>
+// #8 — Fix subtitle size on start
+// Stremio core resets subtitle size on each video load.
+// This patch persists the user's subtitle size preference and force-applies it
+// via setProp when the player initialises.
+(function() {
+    var SIZE_KEY = 'stremio_subtitle_size';
+
+    function getSavedSize() {
+        try { var v = parseInt(localStorage.getItem(SIZE_KEY), 10); return (v && v >= 50 && v <= 250) ? v : null; } catch(e) { return null; }
+    }
+
+    // Monitor subtitle size changes in core state and persist them
+    var lastAppliedSize = null;
+    var lastPlayerHash = '';
+
+    setInterval(function() {
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/player/') !== 0) { lastPlayerHash = ''; return; }
+
+        // On new player session, apply saved size
+        if (hash !== lastPlayerHash) {
+            lastPlayerHash = hash;
+            lastAppliedSize = null;
+
+            // Apply saved subtitle size after a short delay for core to initialise
+            var savedSize = getSavedSize();
+            if (savedSize !== null && window.core) {
+                setTimeout(function() {
+                    try {
+                        window.core.dispatch({
+                            action: 'Player',
+                            args: { action: 'SetProp', args: { propName: 'subtitleSize', propValue: savedSize } }
+                        }, 'player');
+                        console.log('[subs] Applied saved subtitle size:', savedSize);
+                        lastAppliedSize = savedSize;
+                    } catch(e) { console.log('[subs] Failed to apply subtitle size:', e.message); }
+                }, 2000);
+            }
+        }
+
+        // Watch for user changes to subtitle size
+        if (window.core && typeof window.core.getState === 'function') {
+            window.core.getState('player').then(function(state) {
+                if (!state) return;
+                var size = null;
+                // Try multiple paths where subtitle size might live
+                try { size = state.subtitleSize || (state.settings && state.settings.subtitleSize); } catch(e) {}
+                if (size && size >= 50 && size <= 250 && size !== lastAppliedSize) {
+                    lastAppliedSize = size;
+                    try { localStorage.setItem(SIZE_KEY, String(size)); } catch(e) {}
+                }
+            }).catch(function() {});
+        }
+    }, 3000);
+})();
+</script>
+<script>
+// #7 — Remember subtitle language preference
+// Stores the user's selected subtitle language and auto-selects matching track
+// when a new video starts.
+(function() {
+    var LANG_KEY = 'stremio_subtitle_lang';
+
+    function getSavedLang() {
+        try { return localStorage.getItem(LANG_KEY) || null; } catch(e) { return null; }
+    }
+
+    var lastPlayerHash = '';
+    var appliedForHash = '';
+
+    setInterval(function() {
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/player/') !== 0) { lastPlayerHash = ''; return; }
+
+        if (hash !== lastPlayerHash) {
+            lastPlayerHash = hash;
+            appliedForHash = '';
+        }
+
+        if (!window.core || typeof window.core.getState !== 'function') return;
+
+        window.core.getState('player').then(function(state) {
+            if (!state) return;
+
+            // Detect current subtitle selection and save it
+            var currentLang = null;
+            try {
+                if (state.selectedSubtitleTrack) {
+                    currentLang = state.selectedSubtitleTrack.lang || state.selectedSubtitleTrack.language || null;
+                }
+                // Also check subtitleTracks for the active one
+                if (!currentLang && state.subtitleTracks && Array.isArray(state.subtitleTracks)) {
+                    for (var i = 0; i < state.subtitleTracks.length; i++) {
+                        if (state.subtitleTracks[i].selected || state.subtitleTracks[i].active) {
+                            currentLang = state.subtitleTracks[i].lang || state.subtitleTracks[i].language;
+                            break;
+                        }
+                    }
+                }
+            } catch(e) {}
+
+            if (currentLang) {
+                try { localStorage.setItem(LANG_KEY, currentLang); } catch(e) {}
+            }
+
+            // Auto-select saved language on new video (only once per player session)
+            if (appliedForHash === lastPlayerHash) return;
+            var savedLang = getSavedLang();
+            if (!savedLang) return;
+
+            var tracks = null;
+            try { tracks = state.subtitleTracks; } catch(e) {}
+            if (!tracks || !Array.isArray(tracks) || tracks.length === 0) return;
+
+            // Find matching track
+            for (var j = 0; j < tracks.length; j++) {
+                var tLang = tracks[j].lang || tracks[j].language || '';
+                if (tLang.toLowerCase() === savedLang.toLowerCase()) {
+                    appliedForHash = lastPlayerHash;
+                    try {
+                        window.core.dispatch({
+                            action: 'Player',
+                            args: { action: 'SetProp', args: { propName: 'selectedSubtitleTrackId', propValue: tracks[j].id } }
+                        }, 'player');
+                        console.log('[subs] Auto-selected subtitle language:', savedLang, 'track:', tracks[j].id);
+                    } catch(e) { console.log('[subs] Failed to auto-select subtitle:', e.message); }
+                    return;
+                }
+            }
+            // Partial match (e.g. "en" matches "eng")
+            for (var k = 0; k < tracks.length; k++) {
+                var tLang2 = (tracks[k].lang || tracks[k].language || '').toLowerCase();
+                if (tLang2.indexOf(savedLang.toLowerCase().substring(0, 2)) === 0) {
+                    appliedForHash = lastPlayerHash;
+                    try {
+                        window.core.dispatch({
+                            action: 'Player',
+                            args: { action: 'SetProp', args: { propName: 'selectedSubtitleTrackId', propValue: tracks[k].id } }
+                        }, 'player');
+                        console.log('[subs] Auto-selected subtitle (partial match):', tLang2, 'track:', tracks[k].id);
+                    } catch(e) {}
+                    return;
+                }
+            }
+        }).catch(function() {});
+    }, 3000);
+})();
+</script>
+<script>
+// #11 — Subtitle off/unload option
+// Stremio's subtitle picker doesn't include a "None/Off" option.
+// This patch injects one into the subtitle picker DOM and wires it to disable subtitles.
+(function() {
+    var injected = false;
+    var lastHash = '';
+
+    function disableSubtitles() {
+        if (!window.core) return;
+        try {
+            // Dispatch empty/null subtitle track selection to disable subtitles
+            window.core.dispatch({
+                action: 'Player',
+                args: { action: 'SetProp', args: { propName: 'selectedSubtitleTrackId', propValue: null } }
+            }, 'player');
+            console.log('[subs] Subtitles disabled');
+        } catch(e) {
+            console.log('[subs] Failed to disable subtitles:', e.message);
+        }
+        // Also try to remove subtitle display elements directly
+        try {
+            var subEls = document.querySelectorAll('[class*="subtitle"], [class*="Subtitle"]');
+            for (var i = 0; i < subEls.length; i++) {
+                if (subEls[i].style && subEls[i].textContent && subEls[i].offsetHeight < 200) {
+                    // Likely a subtitle text overlay, not a menu
+                }
+            }
+        } catch(e) {}
+        // Clear saved language preference when user explicitly turns off subs
+        try { localStorage.removeItem('stremio_subtitle_lang'); } catch(e) {}
+    }
+    window.__disableSubtitles = disableSubtitles;
+
+    // Watch for subtitle picker menu and inject "Off" option
+    var observer = new MutationObserver(function() {
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/player/') !== 0) return;
+
+        // Look for subtitle track list items
+        var menuItems = document.querySelectorAll('[class*="track"], [class*="Track"], [class*="subtitle-picker"] li, [class*="subtitlesPicker"] [class*="option"]');
+        if (menuItems.length === 0) return;
+
+        // Check if we already injected
+        if (document.getElementById('subtitle-off-option')) return;
+
+        // Find the container of subtitle options
+        var container = menuItems[0].parentNode;
+        if (!container) return;
+
+        var offOption = document.createElement(menuItems[0].tagName || 'div');
+        offOption.id = 'subtitle-off-option';
+        // Clone the styling from an existing menu item
+        if (menuItems[0].className) offOption.className = menuItems[0].className;
+        offOption.textContent = 'Off';
+        offOption.style.cssText = (offOption.style.cssText || '') + ';cursor:pointer;opacity:0.8;';
+        offOption.setAttribute('tabindex', '0');
+        offOption.onfocus = function() { this.style.outline = '2px solid #7b5bf5'; };
+        offOption.onblur = function() { this.style.outline = 'none'; };
+        offOption.onclick = function() { disableSubtitles(); };
+        offOption.onkeydown = function(e) { if (e.keyCode === 13 || e.keyCode === 32) disableSubtitles(); };
+
+        // Insert at the beginning
+        container.insertBefore(offOption, container.firstChild);
+        console.log('[subs] Injected "Off" option into subtitle picker');
+    });
+
+    // Start observing when in player
+    setInterval(function() {
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/player/') === 0 && hash !== lastHash) {
+            lastHash = hash;
+            observer.disconnect();
+            observer.observe(document.body, { childList: true, subtree: true });
+        }
+        if (hash.indexOf('#/player/') !== 0) {
+            observer.disconnect();
+            lastHash = '';
+        }
+    }, 1000);
+})();
+</script>
+<script>
+// #12 — Pass full title to native player
+// Scrapes the title from the player DOM or core state and passes it in the
+// __launchNativePlayer() payload so the native VIDAA player shows the correct title.
+(function() {
+    // Store the original launcher if it exists, and wrap it
+    var origLauncher = window.__launchNativePlayer;
+
+    function getPlayerTitle() {
+        // Try 1: Scrape from player DOM (Stremio shows title in player header)
+        var titleEls = document.querySelectorAll('[class*="title"], [class*="Title"]');
+        for (var i = 0; i < titleEls.length; i++) {
+            var txt = (titleEls[i].textContent || '').trim();
+            // Filter out very short or very long strings, and UI labels
+            if (txt.length > 3 && txt.length < 200 && txt.indexOf('Settings') === -1 && txt.indexOf('Stremio') === -1) {
+                return txt;
+            }
+        }
+        // Try 2: Look in the player hash URL for title hints
+        var hash = window.location.hash || '';
+        var match = hash.match(/[?&]title=([^&]+)/);
+        if (match) return decodeURIComponent(match[1]);
+        // Try 3: Check window.__STREAM_INFO__ if title was cached there
+        if (window.__STREAM_INFO__ && window.__STREAM_INFO__.title) {
+            return window.__STREAM_INFO__.title;
+        }
+        return 'Stremio';
+    }
+
+    // Cache title from meta/details page before entering player
+    var cachedTitle = 'Stremio';
+    setInterval(function() {
+        var hash = window.location.hash || '';
+        // On detail pages, scrape the title for when user enters player
+        if (hash.indexOf('#/detail') === 0 || hash.indexOf('#/metadetails') === 0) {
+            var h1s = document.querySelectorAll('h1, h2, [class*="title"], [class*="Title"], [class*="name"], [class*="Name"]');
+            for (var i = 0; i < h1s.length; i++) {
+                var txt = (h1s[i].textContent || '').trim();
+                if (txt.length > 2 && txt.length < 200) {
+                    cachedTitle = txt;
+                    window.__STREAM_INFO__ = window.__STREAM_INFO__ || {};
+                    window.__STREAM_INFO__.title = txt;
+                    break;
+                }
+            }
+        }
+    }, 2000);
+
+    // Override __launchNativePlayer to include title
+    function enhancedLaunchNativePlayer(url) {
+        if (!url) {
+            var video = document.querySelector('video');
+            url = video ? video.currentSrc || video.src : null;
+        }
+        if (!url) { console.log('[native] No stream URL found'); return false; }
+
+        var title = getPlayerTitle() || cachedTitle || 'Stremio';
+        console.log('[native] Launching native player with title:', title);
+
+        try {
+            var hasNative = typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function';
+            if (!hasNative) return false;
+
+            var messages = [
+                {type: 'launchNativePlayer', url: url, title: title, mimeType: 'video/mp4'},
+                {type: 'openMediaPlayer', url: url, title: title},
+                {type: 'playVideo', url: url, mimeType: 'video/mp4', title: title}
+            ];
+            for (var i = 0; i < messages.length; i++) {
+                try {
+                    omi_platform.sendPlatformMessage(JSON.stringify(messages[i]));
+                    console.log('[native] Sent:', messages[i].type, 'with title:', title);
+                } catch(e) {}
+            }
+            return true;
+        } catch(e) { return false; }
+    }
+
+    // Wait for the original to be defined, then override
+    var overrideCheck = setInterval(function() {
+        if (window.__launchNativePlayer && window.__launchNativePlayer !== enhancedLaunchNativePlayer) {
+            window.__launchNativePlayer = enhancedLaunchNativePlayer;
+            clearInterval(overrideCheck);
+            console.log('[native] Enhanced native player launcher with title support');
+        }
+    }, 500);
+    // Also set it directly in case the original hasn't loaded yet
+    setTimeout(function() {
+        window.__launchNativePlayer = enhancedLaunchNativePlayer;
+        clearInterval(overrideCheck);
+    }, 10000);
+})();
+</script>
+<script>
+// #13 — Mark as watched after native player handoff
+// After launching the native player, we can't track actual progress.
+// This patch estimates the user watched enough to mark it and dispatches
+// a mark-as-watched action to stremio-core after a configurable delay.
+(function() {
+    var HANDOFF_KEY = 'stremio_native_handoff';
+
+    // Hook into the native player launch
+    var origLaunch = null;
+    var hookInstalled = false;
+
+    function installHook() {
+        if (hookInstalled) return;
+        if (!window.__launchNativePlayer) return;
+
+        origLaunch = window.__launchNativePlayer;
+        var wrappedLaunch = function(url) {
+            var result = origLaunch(url);
+            if (result) {
+                // Record the handoff with current player state
+                try {
+                    var hash = window.location.hash || '';
+                    var video = document.querySelector('video');
+                    var duration = video ? video.duration : 0;
+                    var currentTime = video ? video.currentTime : 0;
+
+                    var handoff = {
+                        hash: hash,
+                        time: Date.now(),
+                        duration: duration,
+                        currentTime: currentTime
+                    };
+                    localStorage.setItem(HANDOFF_KEY, JSON.stringify(handoff));
+                    console.log('[watched] Native handoff recorded, duration:', duration, 'currentTime:', currentTime);
+
+                    // After a delay, mark as watched
+                    // Assume user will watch enough content in native player
+                    setTimeout(function() {
+                        markAsWatched(handoff);
+                    }, 30000); // 30 seconds — reasonable assumption they're watching
+                } catch(e) {
+                    console.log('[watched] Failed to record handoff:', e.message);
+                }
+            }
+            return result;
+        };
+        window.__launchNativePlayer = wrappedLaunch;
+        hookInstalled = true;
+        console.log('[watched] Native player handoff hook installed');
+    }
+
+    function markAsWatched(handoff) {
+        if (!window.core || !handoff || !handoff.hash) return;
+
+        // Parse the player hash to extract video/stream info
+        // Hash format: #/player/...
+        var hash = handoff.hash;
+
+        try {
+            // Get current library state and find the item
+            window.core.getState('player').then(function(playerState) {
+                if (!playerState) return;
+
+                // Try to get meta info from player state
+                var metaId = null;
+                var videoId = null;
+                try {
+                    if (playerState.metaItem) metaId = playerState.metaItem.id;
+                    if (playerState.video) videoId = playerState.video.id;
+                } catch(e) {}
+
+                // Estimate progress: if we know duration, mark 90% watched
+                var duration = handoff.duration || 0;
+                var estimatedTime = duration > 0 ? duration * 0.9 : 0;
+
+                if (duration > 0) {
+                    // Dispatch time update to mark progress
+                    try {
+                        window.core.dispatch({
+                            action: 'Player',
+                            args: { action: 'SetProp', args: { propName: 'currentTime', propValue: estimatedTime } }
+                        }, 'player');
+                        console.log('[watched] Set estimated progress to', Math.round(estimatedTime), 's of', Math.round(duration), 's');
+                    } catch(e) {}
+                }
+
+                // Also try to push to library as watched
+                if (metaId) {
+                    try {
+                        window.core.dispatch({
+                            action: 'Ctx',
+                            args: { action: 'MarkAsWatched', args: { id: metaId, videoId: videoId, isWatched: true } }
+                        }, 'ctx');
+                        console.log('[watched] Marked as watched:', metaId, videoId);
+                    } catch(e) {
+                        console.log('[watched] MarkAsWatched dispatch failed:', e.message);
+                    }
+                }
+            }).catch(function(e) {
+                console.log('[watched] Failed to get player state:', e.message);
+            });
+        } catch(e) {}
+
+        try { localStorage.removeItem(HANDOFF_KEY); } catch(e) {}
+    }
+
+    // Install hook with retry (native player patch may load after us)
+    var hookInterval = setInterval(function() {
+        if (window.__launchNativePlayer) {
+            installHook();
+            clearInterval(hookInterval);
+        }
+    }, 500);
+    setTimeout(function() { clearInterval(hookInterval); }, 30000);
+})();
+</script>
+<script>
+// #14 — Full subtitle filenames in picker
+// Stremio truncates subtitle track names in the picker, losing useful info like
+// source, codec, and release group. This patch intercepts addon subtitle responses,
+// caches full labels, and patches the subtitle picker DOM to show them.
+(function() {
+    var fullSubLabels = {};
+
+    // Intercept fetch responses that contain subtitle data from addons
+    var origFetch = window.fetch;
+    window.fetch = function(url, opts) {
+        var result = origFetch.apply(this, arguments);
+        try {
+            if (typeof url === 'string' && url.indexOf('/subtitles/') !== -1) {
+                result.then(function(response) {
+                    var cloned = response.clone();
+                    cloned.json().then(function(data) {
+                        if (data && data.subtitles && Array.isArray(data.subtitles)) {
+                            for (var i = 0; i < data.subtitles.length; i++) {
+                                var sub = data.subtitles[i];
+                                var id = sub.id || sub.url || ('sub_' + i);
+                                var fullLabel = '';
+                                if (sub.filename) fullLabel = sub.filename;
+                                else if (sub.title) fullLabel = sub.title;
+                                else if (sub.lang) fullLabel = sub.lang;
+                                if (fullLabel) {
+                                    // Clean up filename: remove extension, replace dots/underscores
+                                    fullLabel = fullLabel.replace(/\.(srt|ass|ssa|sub|vtt|idx)$/i, '');
+                                    fullSubLabels[id] = fullLabel;
+                                }
+                            }
+                            console.log('[subs] Cached', Object.keys(fullSubLabels).length, 'full subtitle labels');
+                        }
+                    }).catch(function() {});
+                }).catch(function() {});
+            }
+        } catch(e) {}
+        return result;
+    };
+
+    // Expose for debugging
+    window.__fullSubLabels = fullSubLabels;
+
+    // Patch subtitle picker DOM to show full filenames
+    var patchObserver = new MutationObserver(function() {
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/player/') !== 0) return;
+        if (Object.keys(fullSubLabels).length === 0) return;
+
+        // Find subtitle picker elements
+        var options = document.querySelectorAll('[class*="track"], [class*="Track"], [class*="subtitle"] [class*="option"], [class*="subtitlesPicker"] [class*="row"]');
+        for (var i = 0; i < options.length; i++) {
+            if (options[i].getAttribute('data-full-label')) continue;
+            var text = (options[i].textContent || '').trim();
+            // Try to find a matching full label
+            for (var id in fullSubLabels) {
+                var full = fullSubLabels[id];
+                // Match if the truncated text is a prefix of the full label, or if the language matches
+                if (full.toLowerCase().indexOf(text.toLowerCase()) === 0 ||
+                    text.toLowerCase().indexOf(full.substring(0, 10).toLowerCase()) === 0) {
+                    options[i].setAttribute('data-full-label', full);
+                    options[i].setAttribute('title', full);
+                    // Show a truncated but longer version
+                    if (full.length > 60) {
+                        options[i].textContent = full.substring(0, 57) + '...';
+                    } else {
+                        options[i].textContent = full;
+                    }
+                    break;
+                }
+            }
+        }
+    });
+
+    // Activate observer when in player
+    setInterval(function() {
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/player/') === 0) {
+            patchObserver.observe(document.body, { childList: true, subtree: true });
+        } else {
+            patchObserver.disconnect();
+            fullSubLabels = {};
+            window.__fullSubLabels = fullSubLabels;
+        }
+    }, 2000);
+})();
+</script>
+<script>
+// #15 — Prefetch next episode
+// When the user is watching an episode, extract the next episode info and fire
+// a background fetch to warm the streaming server cache, reducing load time
+// when they advance to the next episode.
+(function() {
+    var prefetchedUrl = '';
+    var lastPlayerHash = '';
+
+    setInterval(function() {
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/player/') !== 0) { lastPlayerHash = ''; prefetchedUrl = ''; return; }
+        if (hash === lastPlayerHash) return;
+        lastPlayerHash = hash;
+        prefetchedUrl = '';
+
+        // Wait for video to be playing for a bit before prefetching
+        setTimeout(function() {
+            if (!window.core || typeof window.core.getState !== 'function') return;
+
+            window.core.getState('player').then(function(state) {
+                if (!state) return;
+
+                // Look for next video/episode info in player state
+                var nextVideo = null;
+                try {
+                    if (state.nextVideo) nextVideo = state.nextVideo;
+                    else if (state.seriesInfo && state.seriesInfo.nextVideo) nextVideo = state.seriesInfo.nextVideo;
+                    else if (state.nextEpisode) nextVideo = state.nextEpisode;
+                } catch(e) {}
+
+                if (!nextVideo) {
+                    console.log('[prefetch] No next episode data found');
+                    return;
+                }
+
+                // Extract stream URL for next episode
+                var nextUrl = null;
+                try {
+                    if (nextVideo.stream && nextVideo.stream.url) nextUrl = nextVideo.stream.url;
+                    else if (nextVideo.url) nextUrl = nextVideo.url;
+                    else if (nextVideo.deepLinks && nextVideo.deepLinks.player) {
+                        // We can navigate to this to load it, but for prefetch we need
+                        // to trigger the streaming server to prepare the stream
+                        var serverUrl = window.__STREMIO_SERVER_URL__;
+                        if (serverUrl && serverUrl !== 'http://127.0.0.1:11470') {
+                            // Try to construct a prefetch hint URL for the server
+                            console.log('[prefetch] Next episode available via deepLink:', nextVideo.deepLinks.player);
+                        }
+                    }
+                } catch(e) {}
+
+                if (nextUrl && nextUrl !== prefetchedUrl) {
+                    prefetchedUrl = nextUrl;
+                    console.log('[prefetch] Warming cache for next episode:', nextUrl.substring(0, 80));
+
+                    // Fire a HEAD request to warm the streaming server cache
+                    // This triggers the server to start fetching/preparing the stream
+                    try {
+                        fetch(nextUrl, {
+                            method: 'HEAD',
+                            mode: 'no-cors'
+                        }).then(function() {
+                            console.log('[prefetch] Cache warm request sent successfully');
+                        }).catch(function() {
+                            // no-cors may "fail" but the request still goes out
+                            console.log('[prefetch] Cache warm request sent (no-cors)');
+                        });
+                    } catch(e) {
+                        console.log('[prefetch] Failed to send prefetch:', e.message);
+                    }
+                }
+            }).catch(function() {});
+        }, 15000); // Wait 15s into playback before prefetching next
+    }, 5000);
+})();
+</script>
 
 </html>

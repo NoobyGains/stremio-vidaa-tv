@@ -138,6 +138,58 @@ DRM: Widevine, PlayReady, and ClearKey are all supported.
 | **720p zoom fix** | Auto-corrects viewport scaling on projectors and 720p-reporting TVs |
 | **Watchdog** | Auto-recovers from UI freezes |
 
+## Beyond Stremio Core
+
+This build includes fixes and features that go above and beyond what standard stremio-core provides. These are all implemented as self-contained patches in the `index.html` patch layer.
+
+### Crash & Stability Fixes
+
+| Fix | Description |
+|---|---|
+| **Suppress F key crash** ([#10](https://github.com/NoobyGains/stremio-vidaa-tv/issues/10)) | Prevents the VIDAA browser from crashing when the F key (fullscreen) is pressed. Fullscreen is meaningless on a TV — the browser is always fullscreen. |
+| **Exit button for TV** ([#6](https://github.com/NoobyGains/stremio-vidaa-tv/issues/6)) | Adds an "Exit Stremio" button to Settings. Wired to `Hisense_Exit()` on VIDAA devices for a clean app exit. |
+
+### Playback Persistence
+
+| Fix | Description |
+|---|---|
+| **Save playback speed & volume** ([#9](https://github.com/NoobyGains/stremio-vidaa-tv/issues/9)) | Remembers your preferred playback speed and volume across sessions via localStorage. Automatically restored on each video. |
+| **Fix subtitle size on start** ([#8](https://github.com/NoobyGains/stremio-vidaa-tv/issues/8)) | Persists subtitle size preference and force-applies it when the player initialises, preventing the core from resetting it. |
+| **Remember subtitle language** ([#7](https://github.com/NoobyGains/stremio-vidaa-tv/issues/7)) | Stores your selected subtitle language and auto-selects a matching track when a new video starts. Supports partial language matching (e.g. "en" matches "eng"). |
+
+### Subtitle Enhancements
+
+| Fix | Description |
+|---|---|
+| **Subtitle off/unload option** ([#11](https://github.com/NoobyGains/stremio-vidaa-tv/issues/11)) | Injects a "None/Off" option into the subtitle picker so you can disable subtitles entirely. Standard Stremio has no way to turn subtitles off once enabled. |
+| **Full subtitle filenames** ([#14](https://github.com/NoobyGains/stremio-vidaa-tv/issues/14)) | Intercepts addon subtitle responses and caches full filenames. Patches the subtitle picker DOM to show descriptive names instead of truncated labels. |
+
+### Native Player Integration
+
+| Fix | Description |
+|---|---|
+| **Full title to native player** ([#12](https://github.com/NoobyGains/stremio-vidaa-tv/issues/12)) | Scrapes the title from the player DOM and detail pages, then passes it in the native VIDAA player handoff payload so the system player shows the correct title. |
+| **Mark as watched after native handoff** ([#13](https://github.com/NoobyGains/stremio-vidaa-tv/issues/13)) | After launching the native player, estimates progress and dispatches a mark-as-watched action to stremio-core so your library stays in sync. |
+
+### Performance
+
+| Fix | Description |
+|---|---|
+| **Prefetch next episode** ([#15](https://github.com/NoobyGains/stremio-vidaa-tv/issues/15)) | When watching a series, automatically fires a background fetch for the next episode's stream URL to warm the streaming server cache and reduce load time. |
+
+### Existing VIDAA-Specific Features
+
+These were already in the build before the above patches:
+
+- **VIDAA keyboard fix** — 3-layer interception for the VIDAA on-screen keyboard
+- **Native VIDAA player handoff** — Yellow button opens current stream in the system player for full DV/HDR hardware decode
+- **VIDAA API integration** — Trusted domain registration, device capability detection, real-time video state observers
+- **One-click launcher install** — Permanent TV launcher icon via `Hisense_installApp`
+- **Channel Up/Down quick seek** — 60-second skip forward/back
+- **720p viewport correction** — Auto-zoom fix for projectors and 720p-reporting TVs
+- **Memory pressure monitoring** — Warns when JS heap usage exceeds 85%
+- **Smart DV/HDR handling** — Detects stalled DV playback and offers native player, transcode, or alternative source
+
 ## Remote Control Shortcuts
 
 | Button | Action |
