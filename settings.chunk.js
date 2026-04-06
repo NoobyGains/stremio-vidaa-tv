@@ -645,6 +645,18 @@
                             checked: () => localStorage.getItem('stremio_webtorrent_enabled') === 'true',
                             onClick: () => { var v = localStorage.getItem('stremio_webtorrent_enabled') !== 'true'; localStorage.setItem('stremio_webtorrent_enabled', String(v)); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_webtorrent_enabled'}); if (c&&c.onToggle) c.onToggle(v); } }
                         }, {
+                            label: "Low Memory Mode",
+                            checked: () => localStorage.getItem('stremio_low_memory') === 'true',
+                            onClick: () => { var v = localStorage.getItem('stremio_low_memory') !== 'true'; localStorage.setItem('stremio_low_memory', String(v)); }
+                        }, {
+                            label: "Auto-Rebuffer on Stall",
+                            checked: () => localStorage.getItem('stremio_auto_rebuffer') === 'true',
+                            onClick: () => { var v = localStorage.getItem('stremio_auto_rebuffer') !== 'true'; localStorage.setItem('stremio_auto_rebuffer', String(v)); }
+                        }, {
+                            label: "Stream Stats Overlay",
+                            checked: () => localStorage.getItem('stremio_stream_stats') === 'true',
+                            onClick: () => { var v = localStorage.getItem('stremio_stream_stats') !== 'true'; localStorage.setItem('stremio_stream_stats', String(v)); }
+                        }, {
                             disabled: () => "Web" === p.name,
                             label: "Exit Stremio",
                             onClick: () => { if (window.__exitApp) window.__exitApp(); else window.dispatchEvent(new Event("quit")); }

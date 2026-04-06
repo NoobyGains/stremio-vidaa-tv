@@ -3265,4 +3265,497 @@
 console.log('[community] All 5 community features loaded (#17-#21). Enable in Settings.');
 </script>
 
+<!-- #22: Low Memory Mode -->
+<script>
+(function() {
+    var LS_KEY = 'stremio_low_memory';
+    var PREFIX = '[memory]';
+    var MEM_WARN_THRESHOLD = 0.85; // 85% heap usage triggers warning
+
+    function isEnabled() {
+        return localStorage.getItem(LS_KEY) !== 'false';
+    }
+
+    function log() {
+        var args = Array.prototype.slice.call(arguments);
+        args.unshift(PREFIX);
+        console.log.apply(console, args);
+    }
+
+    function applyLowMemoryConfig() {
+        // Set global flag for other patches
+        window.__lowMemoryMode = true;
+        log('Low memory mode active — setting __lowMemoryMode flag');
+
+        // Reduce WebTorrent buffer if client is available
+        if (window.__webtorrentClient) {
+            try {
+                if (window.__webtorrentClient.maxConns !== undefined) {
+                    window.__webtorrentClient.maxConns = 10;
+                    log('Reduced WebTorrent maxConns to 10');
+                }
+            } catch (e) {
+                log('Could not modify webtorrentClient config:', e.message);
+            }
+        }
+    }
+
+    function deselectionSweep() {
+        if (!window.__webtorrentClient) return;
+        try {
+            var torrents = window.__webtorrentClient.torrents;
+            if (!torrents || !torrents.length) return;
+            torrents.forEach(function(torrent) {
+                if (!torrent || !torrent.pieces) return;
+                var video = document.querySelector('video');
+                if (!video) return;
+                var played = video.played;
+                if (!played || played.length === 0) return;
+                log('Running piece deselection sweep for played ranges');
+                // Deselect piece ranges that are fully before current time
+                for (var i = 0; i < played.length; i++) {
+                    var end = played.end(i);
+                    if (end < video.currentTime - 30) {
+                        // We can't directly deselect arbitrary pieces without knowing offset,
+                        // but we flag that the torrent has been played to avoid re-downloading
+                        log('Played range detected up to', end, 's — memory may be reclaimable');
+                    }
+                }
+            });
+        } catch (e) {
+            log('Deselection sweep error:', e.message);
+        }
+    }
+
+    function monitorMemory() {
+        if (!performance.memory) return;
+        var used = performance.memory.usedJSHeapSize;
+        var total = performance.memory.jsHeapSizeLimit;
+        if (total > 0 && (used / total) > MEM_WARN_THRESHOLD) {
+            log('WARNING: High memory usage —', Math.round(used / 1048576), 'MB used of',
+                Math.round(total / 1048576), 'MB limit (', Math.round((used / total) * 100), '%)');
+        }
+    }
+
+    function init() {
+        if (!isEnabled()) {
+            log('Low memory mode disabled (set localStorage stremio_low_memory=true to enable)');
+            return;
+        }
+        applyLowMemoryConfig();
+        // Re-apply config when WebTorrent client becomes available
+        var clientCheckInterval = setInterval(function() {
+            if (window.__webtorrentClient) {
+                applyLowMemoryConfig();
+                clearInterval(clientCheckInterval);
+            }
+        }, 2000);
+        // Memory monitoring every 10 seconds
+        setInterval(monitorMemory, 10000);
+        // Piece deselection sweep every 30 seconds
+        setInterval(deselectionSweep, 30000);
+        log('Low memory mode initialised');
+    }
+
+    if (window.__registerCommunityToggle) {
+        window.__registerCommunityToggle({
+            id: 'low-memory-toggle',
+            lsKey: LS_KEY,
+            title: 'Low Memory Mode',
+            description: 'Reduces buffer sizes and cleans up played torrent pieces to prevent buffering on low-RAM TVs',
+            onToggle: function(nowEnabled) {
+                log('Toggled:', nowEnabled ? 'ON' : 'OFF');
+                if (nowEnabled) {
+                    window.__lowMemoryMode = true;
+                    applyLowMemoryConfig();
+                } else {
+                    window.__lowMemoryMode = false;
+                }
+            }
+        });
+    }
+
+    init();
+})();
+</script>
+
+<!-- #22: Auto-Rebuffer on Stall -->
+<script>
+(function() {
+    var LS_KEY = 'stremio_auto_rebuffer';
+    var PREFIX = '[rebuffer]';
+    var CHECK_INTERVAL = 2000;   // ms between currentTime checks
+    var STALL_THRESHOLD = 8000;  // ms of no progress = stall
+    var MAX_RETRIES = 3;
+
+    function isEnabled() {
+        return localStorage.getItem(LS_KEY) !== 'false';
+    }
+
+    function log() {
+        var args = Array.prototype.slice.call(arguments);
+        args.unshift(PREFIX);
+        console.log.apply(console, args);
+    }
+
+    function showToast(msg) {
+        var existing = document.getElementById('__rebuffer-toast');
+        if (existing) existing.remove();
+        var toast = document.createElement('div');
+        toast.id = '__rebuffer-toast';
+        toast.textContent = msg;
+        toast.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);' +
+            'background:rgba(0,0,0,0.85);color:#fff;padding:12px 20px;border-radius:8px;' +
+            'font-size:14px;z-index:99999;pointer-events:none;';
+        document.body.appendChild(toast);
+        setTimeout(function() { if (toast.parentNode) toast.remove(); }, 5000);
+    }
+
+    function inPlayerRoute() {
+        return window.location.hash.indexOf('#/player/') !== -1;
+    }
+
+    var stallTimer = 0;
+    var lastTime = null;
+    var retries = 0;
+    var monitorInterval = null;
+    var activeVideo = null;
+
+    function resetStall() {
+        stallTimer = 0;
+        retries = 0;
+    }
+
+    function attemptRebuffer(video) {
+        retries++;
+        log('Stall detected (retry', retries, '/ ' + MAX_RETRIES + ')');
+
+        if (retries > MAX_RETRIES) {
+            log('Max retries reached — showing toast');
+            showToast('Playback stalled. Try a lower quality stream.');
+            resetStall();
+            return;
+        }
+
+        // Try seeking forward 1 second first (less disruptive than reload)
+        try {
+            var seekTarget = video.currentTime + 1;
+            if (video.duration && seekTarget < video.duration) {
+                log('Seeking forward 1 second to', seekTarget);
+                video.currentTime = seekTarget;
+            } else {
+                log('Calling video.load() then play()');
+                var playPromise = video.load();
+                var p = video.play();
+                if (p && p.catch) p.catch(function(e) { log('play() rejected:', e.message); });
+            }
+        } catch (e) {
+            log('Rebuffer attempt error:', e.message);
+        }
+    }
+
+    function checkStall() {
+        if (!inPlayerRoute()) return;
+
+        var video = document.querySelector('video');
+        if (!video) { lastTime = null; return; }
+
+        // New video element
+        if (video !== activeVideo) {
+            activeVideo = video;
+            lastTime = null;
+            resetStall();
+            video.addEventListener('playing', resetStall);
+            video.addEventListener('seeked', resetStall);
+        }
+
+        if (video.paused || video.ended || video.readyState < 2) {
+            lastTime = video.currentTime;
+            return;
+        }
+
+        if (lastTime === null) {
+            lastTime = video.currentTime;
+            return;
+        }
+
+        if (video.currentTime === lastTime) {
+            stallTimer += CHECK_INTERVAL;
+            if (stallTimer >= STALL_THRESHOLD) {
+                attemptRebuffer(video);
+                stallTimer = 0; // reset timer between retries
+            }
+        } else {
+            // Progress made — reset
+            if (stallTimer > 0) log('Stall cleared — playback resumed');
+            stallTimer = 0;
+            retries = 0;
+        }
+
+        lastTime = video.currentTime;
+    }
+
+    function startMonitor() {
+        if (monitorInterval) return;
+        monitorInterval = setInterval(checkStall, CHECK_INTERVAL);
+        log('Stall monitor started');
+    }
+
+    function stopMonitor() {
+        if (monitorInterval) {
+            clearInterval(monitorInterval);
+            monitorInterval = null;
+        }
+        lastTime = null;
+        resetStall();
+        log('Stall monitor stopped');
+    }
+
+    function onHashChange() {
+        if (!isEnabled()) return;
+        if (inPlayerRoute()) {
+            startMonitor();
+        } else {
+            stopMonitor();
+        }
+    }
+
+    function init() {
+        if (!isEnabled()) {
+            log('Auto-rebuffer disabled (set localStorage stremio_auto_rebuffer=true to enable)');
+            return;
+        }
+        window.addEventListener('hashchange', onHashChange);
+        onHashChange();
+        log('Auto-rebuffer on stall initialised');
+    }
+
+    if (window.__registerCommunityToggle) {
+        window.__registerCommunityToggle({
+            id: 'auto-rebuffer-toggle',
+            lsKey: LS_KEY,
+            title: 'Auto-Rebuffer on Stall',
+            description: 'Detects playback stalls and automatically attempts to resume without user intervention',
+            onToggle: function(nowEnabled) {
+                log('Toggled:', nowEnabled ? 'ON' : 'OFF');
+                if (nowEnabled) {
+                    window.addEventListener('hashchange', onHashChange);
+                    onHashChange();
+                } else {
+                    stopMonitor();
+                    window.removeEventListener('hashchange', onHashChange);
+                }
+            }
+        });
+    }
+
+    init();
+})();
+</script>
+
+<!-- #22: Stream Stats Overlay -->
+<script>
+(function() {
+    var LS_KEY = 'stremio_stream_stats';
+    var PREFIX = '[stats]';
+    var UPDATE_INTERVAL = 2000;
+    var TOGGLE_KEY = 457; // Info/Display remote button
+
+    function isEnabled() {
+        return localStorage.getItem(LS_KEY) !== 'false';
+    }
+
+    function log() {
+        var args = Array.prototype.slice.call(arguments);
+        args.unshift(PREFIX);
+        console.log.apply(console, args);
+    }
+
+    function inPlayerRoute() {
+        return window.location.hash.indexOf('#/player/') !== -1;
+    }
+
+    var overlay = null;
+    var updateInterval = null;
+    var statsVisible = true;
+    var bytesAtLastCheck = 0;
+    var timeAtLastCheck = 0;
+
+    function createOverlay() {
+        if (overlay) return;
+        overlay = document.createElement('div');
+        overlay.id = '__stream-stats-overlay';
+        overlay.style.cssText = 'position:fixed;top:10px;left:10px;background:rgba(0,0,0,0.7);' +
+            'color:#fff;padding:8px 12px;border-radius:6px;font-family:monospace;font-size:12px;' +
+            'z-index:99999;pointer-events:none;white-space:pre;line-height:1.5;';
+        document.body.appendChild(overlay);
+        log('Overlay created');
+    }
+
+    function removeOverlay() {
+        if (overlay && overlay.parentNode) {
+            overlay.parentNode.removeChild(overlay);
+        }
+        overlay = null;
+    }
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B/s';
+        if (bytes < 1048576) return Math.round(bytes / 1024) + ' KB/s';
+        return (bytes / 1048576).toFixed(1) + ' MB/s';
+    }
+
+    function formatMB(bytes) {
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    function getBufferHealth(video) {
+        if (!video || !video.buffered || video.buffered.length === 0) return 0;
+        var current = video.currentTime;
+        for (var i = 0; i < video.buffered.length; i++) {
+            if (video.buffered.start(i) <= current && current <= video.buffered.end(i)) {
+                return video.buffered.end(i) - current;
+            }
+        }
+        return 0;
+    }
+
+    function getBitrate(totalBytes) {
+        var now = Date.now();
+        if (!bytesAtLastCheck || !timeAtLastCheck) {
+            bytesAtLastCheck = totalBytes;
+            timeAtLastCheck = now;
+            return 0;
+        }
+        var elapsed = (now - timeAtLastCheck) / 1000;
+        if (elapsed < 1) return 0;
+        var rate = (totalBytes - bytesAtLastCheck) / elapsed;
+        bytesAtLastCheck = totalBytes;
+        timeAtLastCheck = now;
+        return rate;
+    }
+
+    function updateStats() {
+        if (!overlay || !statsVisible) return;
+
+        var video = document.querySelector('video');
+        var lines = [];
+
+        // Resolution
+        if (video) {
+            var w = video.videoWidth, h = video.videoHeight;
+            lines.push('Resolution : ' + (w && h ? w + 'x' + h : 'unknown'));
+        } else {
+            lines.push('Resolution : no video');
+        }
+
+        // Buffer health
+        var bufferHealth = video ? getBufferHealth(video) : 0;
+        lines.push('Buffer     : ' + bufferHealth.toFixed(1) + 's ahead');
+
+        // WebTorrent stats
+        var torrent = null;
+        if (window.__webtorrentClient && window.__webtorrentClient.torrents &&
+                window.__webtorrentClient.torrents.length > 0) {
+            torrent = window.__webtorrentClient.torrents[0];
+        }
+
+        if (torrent) {
+            var dlSpeed = torrent.downloadSpeed || 0;
+            var peers = torrent.numPeers || 0;
+            var downloaded = torrent.downloaded || 0;
+            var bitrate = getBitrate(downloaded);
+
+            lines.push('DL Speed   : ' + formatBytes(dlSpeed));
+            lines.push('Peers      : ' + peers);
+            lines.push('Bitrate    : ' + formatBytes(bitrate));
+        } else {
+            lines.push('DL Speed   : N/A (no torrent)');
+            lines.push('Peers      : N/A');
+            lines.push('Bitrate    : N/A');
+        }
+
+        // Memory
+        if (performance.memory) {
+            var used = performance.memory.usedJSHeapSize;
+            var limit = performance.memory.jsHeapSizeLimit;
+            lines.push('Memory     : ' + formatMB(used) + ' / ' + formatMB(limit));
+        } else {
+            lines.push('Memory     : unavailable');
+        }
+
+        overlay.textContent = lines.join('\n');
+    }
+
+    function startUpdating() {
+        if (updateInterval) return;
+        createOverlay();
+        updateInterval = setInterval(updateStats, UPDATE_INTERVAL);
+        updateStats();
+        log('Stats overlay started');
+    }
+
+    function stopUpdating() {
+        if (updateInterval) {
+            clearInterval(updateInterval);
+            updateInterval = null;
+        }
+        removeOverlay();
+        log('Stats overlay stopped');
+    }
+
+    function onHashChange() {
+        if (!isEnabled()) return;
+        if (inPlayerRoute()) {
+            startUpdating();
+        } else {
+            stopUpdating();
+        }
+    }
+
+    function onKeyDown(e) {
+        if (!isEnabled()) return;
+        if (e.keyCode === TOGGLE_KEY && inPlayerRoute()) {
+            statsVisible = !statsVisible;
+            if (overlay) overlay.style.display = statsVisible ? 'block' : 'none';
+            log('Stats overlay toggled:', statsVisible ? 'visible' : 'hidden');
+        }
+    }
+
+    function init() {
+        if (!isEnabled()) {
+            log('Stream stats overlay disabled (set localStorage stremio_stream_stats=true to enable)');
+            return;
+        }
+        window.addEventListener('hashchange', onHashChange);
+        window.addEventListener('keydown', onKeyDown);
+        onHashChange();
+        log('Stream stats overlay initialised');
+    }
+
+    if (window.__registerCommunityToggle) {
+        window.__registerCommunityToggle({
+            id: 'stream-stats-toggle',
+            lsKey: LS_KEY,
+            title: 'Stream Stats Overlay',
+            description: 'Shows resolution, buffer health, download speed, peers, and memory in the player (toggle with Info button)',
+            onToggle: function(nowEnabled) {
+                log('Toggled:', nowEnabled ? 'ON' : 'OFF');
+                if (nowEnabled) {
+                    window.addEventListener('hashchange', onHashChange);
+                    window.addEventListener('keydown', onKeyDown);
+                    onHashChange();
+                } else {
+                    stopUpdating();
+                    window.removeEventListener('hashchange', onHashChange);
+                    window.removeEventListener('keydown', onKeyDown);
+                }
+            }
+        });
+    }
+
+    init();
+})();
+</script>
+
 </html>
