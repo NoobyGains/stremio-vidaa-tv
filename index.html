@@ -2398,10 +2398,19 @@
             vidaaBtn.insertBefore(iconSvg, vidaaBtn.firstChild);
         }
 
-        // Ensure button is above the navbar backdrop overlay
+        // Ensure button is clickable — the navbar backdrop (position:fixed, full viewport)
+        // blocks all native click events. React buttons work because React uses document-level
+        // event delegation. Our non-React button needs the backdrop disabled.
         vidaaBtn.style.position = 'relative';
         vidaaBtn.style.zIndex = '100';
         vidaaBtn.style.cursor = 'pointer';
+
+        // Disable pointer-events on the navbar backdrop so clicks pass through
+        var backdrop = document.querySelector('[class*="backdrop-"]');
+        if (backdrop && backdrop.closest('[class*="navbar-"]')) {
+            backdrop.style.pointerEvents = 'none';
+            log('Disabled pointer-events on navbar backdrop');
+        }
 
         // Focus handlers — set the focused attribute the nav system expects
         vidaaBtn.addEventListener('focus', function() { vidaaBtn.setAttribute('focused', 'true'); });
