@@ -2233,6 +2233,17 @@
             var clone = bgBlurOption.cloneNode(true);
             clone.id = 'vidaa-opt-' + cfg.id;
 
+            // Strip React internal properties so React doesn't intercept events
+            var allEls = [clone].concat(Array.prototype.slice.call(clone.querySelectorAll('*')));
+            for (var k = 0; k < allEls.length; k++) {
+                var props = Object.keys(allEls[k]);
+                for (var p = 0; p < props.length; p++) {
+                    if (props[p].indexOf('__react') === 0 || props[p].indexOf('__$') === 0) {
+                        try { delete allEls[k][props[p]]; } catch(e) {}
+                    }
+                }
+            }
+
             var cloneLabel = clone.querySelector('[class*="label-"]');
             if (cloneLabel) cloneLabel.textContent = cfg.label;
 
@@ -2277,6 +2288,16 @@
         // Exit Stremio button at the end
         var exitClone = bgBlurOption.cloneNode(true);
         exitClone.id = 'vidaa-opt-exit';
+        // Strip React internals
+        var exitEls = [exitClone].concat(Array.prototype.slice.call(exitClone.querySelectorAll('*')));
+        for (var x = 0; x < exitEls.length; x++) {
+            var ep = Object.keys(exitEls[x]);
+            for (var y = 0; y < ep.length; y++) {
+                if (ep[y].indexOf('__react') === 0 || ep[y].indexOf('__$') === 0) {
+                    try { delete exitEls[x][ep[y]]; } catch(e) {}
+                }
+            }
+        }
         var exitLabel = exitClone.querySelector('[class*="label-"]');
         if (exitLabel) { exitLabel.textContent = 'Exit Stremio'; exitLabel.style.color = '#f87171'; }
         var exitToggle = exitClone.querySelector('[class*="toggle-"]');
