@@ -77,6 +77,10 @@
     color: #ff5f6f;
   }
 
+  .status-message.warning {
+    color: #f5a623;
+  }
+
   .status-message.working {
     color: #7b5bf5;
   }
@@ -213,6 +217,30 @@
     border-radius: 3px;
     transition: width 0.4s ease;
   }
+
+  .devmode-hint {
+    display: none;
+    margin-top: 28px;
+    padding: 18px 28px;
+    background: rgba(245, 166, 35, 0.08);
+    border: 1px solid rgba(245, 166, 35, 0.35);
+    border-radius: 12px;
+    font-size: 18px;
+    color: #d4a843;
+    text-align: left;
+    line-height: 1.6;
+  }
+
+  .devmode-hint strong {
+    color: #f5c96a;
+    display: block;
+    margin-bottom: 6px;
+    font-size: 19px;
+  }
+
+  .devmode-hint ul {
+    margin: 6px 0 0 18px;
+  }
 </style>
 </head>
 <body>
@@ -236,6 +264,16 @@
 
   <div id="notVidaa" class="not-vidaa">
     Hisense VIDAA APIs not detected. This installer must run on a VIDAA TV via DNS spoofing.
+  </div>
+
+  <div id="devmodeHint" class="devmode-hint">
+    <strong>Domain registration skipped</strong>
+    The app uses HTTPS (<code>noobygains.github.io</code>) so it may still work without domain registration.
+    If the app does not load after install, Developer Mode may be required.
+    <ul>
+      <li>Settings &gt; System &gt; About &gt; press <strong>1234</strong> on the remote &gt; toggle Developer Mode</li>
+      <li>Some TV models may not support Developer Mode — the app often works without it.</li>
+    </ul>
   </div>
 </div>
 
@@ -288,27 +326,56 @@
   }
 
   /* ---------- domain registration ---------- */
+  function showDevmodeHint() {
+    document.getElementById("devmodeHint").style.display = "block";
+  }
+
   function registerDomain(callback) {
     setStatus("Registering trusted domain...", "working");
     showProgress(20);
 
+    /* If the API doesn't exist at all, skip gracefully */
     if (typeof Hisense_AddInsecureDomain !== "function") {
-      setStatus("Hisense_AddInsecureDomain not available", "error");
-      hideProgress();
-      callback(false);
+      setStatus(
+        "Domain registration unavailable \u2014 continuing anyway (app uses HTTPS).",
+        "warning"
+      );
+      showDevmodeHint();
+      showProgress(40);
+      setTimeout(function() { callback(true); }, 600);
       return;
     }
 
     try {
-      Hisense_AddInsecureDomain(GH_DOMAIN);
+      var result = Hisense_AddInsecureDomain(GH_DOMAIN);
+
+      /* Some firmware returns a non-zero error code instead of throwing */
+      if (typeof result === "number" && result !== 0) {
+        throw new Error("returned code " + result);
+      }
+
       showProgress(40);
-      setTimeout(function() {
-        callback(true);
-      }, 500);
+      setTimeout(function() { callback(true); }, 500);
     } catch (e) {
-      setStatus("Domain registration failed: " + e.message, "error");
-      hideProgress();
-      callback(false);
+      var msg = (e && e.message) ? e.message : String(e);
+      var isDisabled = /disabled/i.test(msg);
+
+      if (isDisabled) {
+        setStatus(
+          "Developer Mode is disabled on this TV \u2014 skipping domain registration. " +
+          "Install will continue; the app may still work over HTTPS.",
+          "warning"
+        );
+      } else {
+        setStatus(
+          "Domain registration skipped (" + msg + ") \u2014 continuing anyway.",
+          "warning"
+        );
+      }
+      showDevmodeHint();
+      showProgress(40);
+      /* Non-blocking: continue the install regardless */
+      setTimeout(function() { callback(true); }, 800);
     }
   }
 
@@ -318,11 +385,7 @@
     disableButtons(true);
 
     registerDomain(function(ok) {
-      if (!ok) {
-        disableButtons(false);
-        return;
-      }
-
+      /* ok is always true — domain registration is non-blocking */
       setStatus("Installing Stremio...", "working");
       showProgress(60);
 
