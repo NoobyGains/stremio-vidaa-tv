@@ -10,747 +10,946 @@
     <meta http-equiv="Expires" content="0" />
     <link rel="shortcut icon" type="image/ico" href="assets/favicon.ico" />
     <style>
-        [focused], :focus { outline: 2px solid #7b5bf5 !important; outline-offset: 2px; }
-        button:focus { outline: 3px solid #a78bfa !important; outline-offset: 2px; }
-    </style>
-    <style>
     /* =============================================================
-       Stremio VIDAA TV — Modern Streaming Theme Override
-       Design: Dark cinema theme with purple accents
-       Target: TV 10-foot viewing experience
+       Stremio VIDAA TV — Nyx Player Theme v2
+       Based on extracted Nyx Player design tokens (133 CSS vars)
+       Optimised for ARM TV GPUs: no backdrop-filter on cards,
+       specific transition properties only, large 10-foot UI
        ============================================================= */
 
-    /* ----- GLOBAL / ROOT ----- */
+    /* ----- 0. DESIGN TOKENS (from Nyx Player :root) ----- */
+    :root {
+        /* Backgrounds */
+        --nyx-bg-main: #020a19;
+        --nyx-bg-gradient: radial-gradient(ellipse 70% 140% at 0% 30%, rgba(104,23,23,.32) 0%, rgba(104,23,23,.1) 40%, transparent 70%),
+                          radial-gradient(ellipse 140% 70% at 70% 100%, rgba(40,40,163,.3) 0%, rgba(40,40,163,.09) 40%, transparent 70%),
+                          radial-gradient(ellipse 90% 90% at 0% 100%, rgba(74,16,96,.25) 0%, rgba(74,16,96,.07) 35%, transparent 60%),
+                          radial-gradient(ellipse 50% 50% at 50% 45%, rgba(2,10,25,.85) 0%, transparent 75%),
+                          #020a19;
+        --nyx-surface-base: #020a19;
+        --nyx-surface-raised: rgba(15,15,20,.45);
+        --nyx-surface-modal: rgba(25,28,45,.8);
+        --nyx-surface-overlay: rgba(0,0,0,.6);
+        --nyx-surface-whisper: rgba(255,255,255,.03);
+
+        /* Glass */
+        --nyx-glass-bg-light: rgba(15,15,20,.25);
+        --nyx-glass-bg: rgba(15,15,15,.45);
+        --nyx-glass-bg-medium: rgba(15,15,20,.45);
+        --nyx-glass-bg-heavy: rgba(15,15,20,.7);
+        --nyx-glass-bg-player: rgba(0,0,0,.85);
+        --nyx-glass-border: rgba(255,255,255,.08);
+        --nyx-glass-blur: blur(12px) saturate(160%);
+        --nyx-glass-blur-strong: blur(24px) saturate(180%);
+
+        /* Cards */
+        --nyx-card-bg: rgba(33,38,45,.3);
+
+        /* Borders */
+        --nyx-border-subtle: rgba(255,255,255,.06);
+        --nyx-border-default: rgba(255,255,255,.1);
+        --nyx-border-glass: rgba(255,255,255,.15);
+        --nyx-border-strong: rgba(255,255,255,.2);
+
+        /* Text */
+        --nyx-text-primary: #ffffff;
+        --nyx-text-secondary: #c9d1d9;
+        --nyx-text-muted: #8b949e;
+        --nyx-text-disabled: rgba(255,255,255,.3);
+        --nyx-text-icon: rgba(255,255,255,.4);
+
+        /* Accent — using Stremio purple */
+        --nyx-accent: #7b5bf5;
+        --nyx-accent-hover: #6a4de0;
+        --nyx-accent-subtle: rgba(123,91,245,.15);
+        --nyx-accent-glow: 0 0 20px rgba(123,91,245,.4);
+
+        /* Nyx native accents (for info/secondary uses) */
+        --nyx-blue: #58a6ff;
+        --nyx-violet: #4a4ad0;
+        --nyx-violet-subtle: rgba(74,74,208,.06);
+
+        /* Status */
+        --nyx-success: #46d369;
+        --nyx-error: #ef4444;
+        --nyx-warning: #f59e0b;
+        --nyx-info: #58a6ff;
+
+        /* Typography */
+        --nyx-font: 'PlusJakartaSans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        --nyx-text-xs: .75rem;
+        --nyx-text-sm: .8125rem;
+        --nyx-text-md: .875rem;
+        --nyx-text-base: 1rem;
+        --nyx-text-lg: 1.125rem;
+        --nyx-text-xl: 1.25rem;
+        --nyx-text-2xl: 1.75rem;
+        --nyx-text-3xl: 2.25rem;
+        --nyx-text-4xl: 2.5rem;
+        --nyx-text-5xl: 3.5rem;
+        --nyx-leading-tight: 1.2;
+        --nyx-leading-normal: 1.5;
+        --nyx-leading-relaxed: 1.6;
+
+        /* Spacing */
+        --nyx-sp-1: .25rem;
+        --nyx-sp-2: .5rem;
+        --nyx-sp-3: .75rem;
+        --nyx-sp-4: 1rem;
+        --nyx-sp-5: 1.25rem;
+        --nyx-sp-6: 1.5rem;
+        --nyx-sp-8: 2rem;
+        --nyx-sp-10: 2.5rem;
+        --nyx-sp-12: 3rem;
+        --nyx-sp-16: 4rem;
+
+        /* Radii */
+        --nyx-radius-xs: .125rem;
+        --nyx-radius-sm: .25rem;
+        --nyx-radius-md: .5rem;
+        --nyx-radius-lg: .75rem;
+        --nyx-radius-xl: 1rem;
+        --nyx-radius-2xl: 1.5rem;
+        --nyx-radius-pill: 2rem;
+
+        /* Shadows */
+        --nyx-shadow-sm: 0 2px 8px rgba(0,0,0,.2);
+        --nyx-shadow-md: 0 4px 16px rgba(0,0,0,.3);
+        --nyx-shadow-lg: 0 8px 32px rgba(0,0,0,.4);
+        --nyx-shadow-xl: 0 12px 48px rgba(0,0,0,.6);
+
+        /* Overlays */
+        --nyx-hover-overlay: rgba(255,255,255,.06);
+        --nyx-active-overlay: rgba(255,255,255,.1);
+
+        /* Animation */
+        --nyx-ease-out: cubic-bezier(.4,0,.2,1);
+        --nyx-ease-bounce: cubic-bezier(.34,1.56,.64,1);
+        --nyx-ease-spring: cubic-bezier(.4,0,.2,1.2);
+        --nyx-duration-fast: .15s;
+        --nyx-duration-normal: .25s;
+        --nyx-duration-slow: .4s;
+
+        /* Layout */
+        --nyx-sidebar-w: 60px;
+        --nyx-toolbar-bg: rgba(22,27,34,.4);
+    }
+
+    /* ----- 1. GLOBAL RESET & THEME ----- */
     html, body {
-        background-color: #0c0c10 !important;
-        color: rgba(255,255,255,0.9) !important;
-        font-family: 'PlusJakartaSans', sans-serif !important;
+        background-color: var(--nyx-bg-main) !important;
+        background-image: var(--nyx-bg-gradient) !important;
+        background-attachment: fixed !important;
+        color: var(--nyx-text-secondary) !important;
+        font-family: var(--nyx-font) !important;
         -webkit-font-smoothing: antialiased !important;
         -moz-osx-font-smoothing: grayscale !important;
+        overflow: hidden !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
 
-    /* Remove any stray light backgrounds and borders globally */
+    #root {
+        background-color: transparent !important;
+        min-height: 100vh !important;
+    }
+
     #root * {
-        border-color: rgba(255,255,255,0.06) !important;
+        border-color: var(--nyx-border-subtle) !important;
     }
 
-    /* Smooth transitions on all interactive elements */
+    /* ----- 2. FOCUS RING — D-pad visible (preserved) ----- */
+    [focused], :focus {
+        outline: 2px solid var(--nyx-accent) !important;
+        outline-offset: 2px !important;
+    }
+    button:focus {
+        outline: 3px solid #a78bfa !important;
+        outline-offset: 2px !important;
+    }
+    :focus-visible {
+        outline: 2px solid var(--nyx-accent) !important;
+        outline-offset: 2px !important;
+    }
+    [focused] {
+        outline-color: var(--nyx-accent) !important;
+    }
+
+    /* ----- 3. SCROLLBARS (hidden for TV) ----- */
+    ::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
+    * { scrollbar-width: none !important; }
+
+    /* ----- 4. INTERACTIVE TRANSITIONS (specific props only) ----- */
     a, button, [focused], [tabindex] {
-        transition: background-color 0.15s ease-out, opacity 0.15s ease-out, transform 0.15s ease-out, outline-color 0.15s ease-out !important;
+        transition: background-color var(--nyx-duration-fast) var(--nyx-ease-out),
+                    opacity var(--nyx-duration-fast) var(--nyx-ease-out),
+                    transform var(--nyx-duration-fast) var(--nyx-ease-out),
+                    outline-color var(--nyx-duration-fast) var(--nyx-ease-out),
+                    border-color var(--nyx-duration-fast) var(--nyx-ease-out) !important;
     }
 
-    /* Custom scrollbar (hidden for TV) */
-    ::-webkit-scrollbar { width: 0; height: 0; }
+    /* ----- 5. NAVBAR → LEFT SIDEBAR (Nyx style) ----- */
+    .navbar-NNb1c {
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
+        bottom: 0 !important;
+        right: auto !important;
+        width: var(--nyx-sidebar-w) !important;
+        height: 100vh !important;
+        flex-direction: column !important;
+        display: flex !important;
+        z-index: 1000 !important;
+        background: var(--nyx-glass-bg-heavy) !important;
+        border-right: 1px solid var(--nyx-glass-border) !important;
+        border-bottom: none !important;
+        border-radius: 0 var(--nyx-radius-2xl) var(--nyx-radius-2xl) 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        transition: background-color var(--nyx-duration-slow) var(--nyx-ease-out),
+                    border-color var(--nyx-duration-slow) var(--nyx-ease-out) !important;
+    }
 
-    /* ----- PAGE SHELL ----- */
+    .navbar-NNb1c:hover {
+        background: rgba(20,20,25,.6) !important;
+        border-color: var(--nyx-border-glass) !important;
+    }
+
+    .navbar-NNb1c .background-xaXYe {
+        background: transparent !important;
+    }
+
+    .navbar-NNb1c .backdrop-H4Hka {
+        display: none !important;
+    }
+
+    .navbar-NNb1c .content-IjaqZ {
+        flex-direction: column !important;
+        display: flex !important;
+        height: 100% !important;
+        width: 100% !important;
+        padding: var(--nyx-sp-4) 0 !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+    }
+
+    /* Logo in sidebar */
+    .navbar-NNb1c .logo-lCpuw {
+        width: 34px !important;
+        height: 34px !important;
+        margin: var(--nyx-sp-2) auto var(--nyx-sp-6) auto !important;
+        display: block !important;
+        filter: drop-shadow(0 0 .5rem rgba(255,255,255,.15)) !important;
+    }
+
+    .navbar-NNb1c .heading-QbiVt {
+        display: none !important;
+    }
+
+    /* Tabs stack vertically */
+    .tabs-wr1wR {
+        flex-direction: column !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: var(--nyx-sp-1) !important;
+        width: 100% !important;
+        padding: 0 !important;
+    }
+
+    /* Individual tab — icon only, Nyx nav-item style */
+    .tab-jVZYR {
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 44px !important;
+        height: 44px !important;
+        border-radius: var(--nyx-radius-lg) !important;
+        padding: 0 !important;
+        margin: 2px 0 !important;
+        background: transparent !important;
+        position: relative !important;
+        border: none !important;
+    }
+
+    .tab-jVZYR .label-l7NFN {
+        display: none !important;
+    }
+
+    .tab-jVZYR .icon-SZKt5 {
+        width: 22px !important;
+        height: 22px !important;
+        opacity: 0.5 !important;
+        transition: opacity var(--nyx-duration-fast) var(--nyx-ease-out) !important;
+    }
+
+    .tab-jVZYR:hover .icon-SZKt5,
+    .tab-jVZYR[focused] .icon-SZKt5 {
+        opacity: 1 !important;
+    }
+
+    .tab-jVZYR:hover,
+    .tab-jVZYR[focused] {
+        background: var(--nyx-accent-subtle) !important;
+        box-shadow: none !important;
+    }
+
+    /* Selected tab — purple accent bar (Nyx active indicator) */
+    .tab-jVZYR.selected-L5m7b {
+        background: rgba(123,91,245,.18) !important;
+    }
+
+    .tab-jVZYR.selected-L5m7b .icon-SZKt5 {
+        opacity: 1 !important;
+        filter: drop-shadow(0 0 4px rgba(123,91,245,.5)) !important;
+    }
+
+    .tab-jVZYR.selected-L5m7b::before {
+        content: '' !important;
+        position: absolute !important;
+        left: 0 !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+        width: 3px !important;
+        height: 22px !important;
+        background: var(--nyx-accent) !important;
+        border-radius: 0 3px 3px 0 !important;
+        box-shadow: var(--nyx-accent-glow) !important;
+    }
+
+    /* Push main content right to clear sidebar */
+    #root > div > div:not(.navbar-NNb1c):not(.player-SmYw4) {
+        margin-left: var(--nyx-sidebar-w) !important;
+    }
+
+    .page-jI4PO,
+    .home-qPkGc,
+    .discover-sKRNy,
+    .search-guyhx,
+    .library-J0Lti,
+    .settings-jvCLz {
+        margin-left: 0 !important;
+        padding-left: 0 !important;
+    }
+
+    /* ----- 6. HOME PAGE ----- */
+    .home-qPkGc {
+        background-color: transparent !important;
+        background: transparent !important;
+        width: 100% !important;
+        padding: 0 !important;
+    }
+
+    .home-qPkGc .content-BPvBy {
+        padding: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* Catalog row sections */
+    .catalog-Aq3BF {
+        padding: 0 var(--nyx-sp-8) !important;
+        margin-bottom: var(--nyx-sp-6) !important;
+    }
+
+    .catalog-Aq3BF .title-EqKoF {
+        font-size: var(--nyx-text-xl) !important;
+        font-weight: 700 !important;
+        color: var(--nyx-text-primary) !important;
+        margin-bottom: var(--nyx-sp-3) !important;
+        padding-left: var(--nyx-sp-2) !important;
+        letter-spacing: -0.01em !important;
+    }
+
+    /* ----- 7. DETAILS PAGE — FULL-BLEED CINEMATIC ----- */
+    .details-omgjE,
+    .details-d5pag {
+        position: relative !important;
+        width: 100% !important;
+        min-height: 100vh !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        background: var(--nyx-bg-main) !important;
+        padding: 0 !important;
+    }
+
+    /* Backdrop image — 60vh for TV (Nyx uses 85vh) */
+    .details-omgjE .background-G0atu,
+    .details-d5pag .background-G0atu {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        height: 60vh !important;
+        object-fit: cover !important;
+        z-index: 0 !important;
+    }
+
+    .details-omgjE .background-G0atu img,
+    .details-d5pag .background-G0atu img {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+        mask-image: linear-gradient(to bottom, black 0%, black 55%, rgba(0,0,0,.5) 80%, transparent 100%) !important;
+        -webkit-mask-image: linear-gradient(to bottom, black 0%, black 55%, rgba(0,0,0,.5) 80%, transparent 100%) !important;
+    }
+
+    /* Gradient overlay (Nyx hero-overlay style) */
+    .details-omgjE .overlay-IpSXf,
+    .details-d5pag .overlay-IpSXf {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        height: 60vh !important;
+        background: linear-gradient(to top,
+            var(--nyx-bg-main) 0%,
+            rgba(2,10,25,.9) 25%,
+            rgba(2,10,25,.5) 55%,
+            rgba(2,10,25,.25) 80%,
+            rgba(2,10,25,.15) 100%) !important;
+        z-index: 1 !important;
+    }
+
+    /* Info section — overlaid on backdrop bottom */
+    .details-omgjE .info-c3Gsa,
+    .details-d5pag .info-c3Gsa {
+        position: relative !important;
+        z-index: 2 !important;
+        padding: 35vh var(--nyx-sp-12) var(--nyx-sp-8) var(--nyx-sp-12) !important;
+        background: transparent !important;
+        max-width: 100% !important;
+    }
+
+    /* Title — large cinema (Nyx hero-title) */
+    .details-omgjE .info-c3Gsa .title-OL31B,
+    .details-d5pag .info-c3Gsa .title-OL31B,
+    .title-OL31B {
+        font-size: var(--nyx-text-4xl) !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.02em !important;
+        line-height: var(--nyx-leading-tight) !important;
+        color: var(--nyx-text-primary) !important;
+        text-shadow: 0 2px 20px rgba(0,0,0,.6) !important;
+        margin-bottom: var(--nyx-sp-4) !important;
+    }
+
+    /* Description */
+    .description-Vy9xR {
+        font-size: var(--nyx-text-base) !important;
+        line-height: var(--nyx-leading-relaxed) !important;
+        color: var(--nyx-text-secondary) !important;
+        max-width: 700px !important;
+        margin-bottom: var(--nyx-sp-6) !important;
+    }
+
+    /* Video title */
+    .video-title-dEjBn {
+        font-size: var(--nyx-text-lg) !important;
+        font-weight: 600 !important;
+        color: rgba(255,255,255,.9) !important;
+    }
+
+    /* Video date */
+    .video-date-U5BHg {
+        font-size: var(--nyx-text-sm) !important;
+        color: var(--nyx-text-icon) !important;
+    }
+
+    /* Cast info */
+    .cast-Iq4eA {
+        font-size: var(--nyx-text-md) !important;
+        color: var(--nyx-text-muted) !important;
+    }
+
+    /* Logo/poster in details */
+    .logo-rSs1m {
+        border-radius: var(--nyx-radius-lg) !important;
+        overflow: hidden !important;
+        box-shadow: var(--nyx-shadow-lg) !important;
+    }
+
+    /* Ratings */
+    .ratings-container-jMLVe {
+        display: flex !important;
+        gap: var(--nyx-sp-3) !important;
+        margin-bottom: var(--nyx-sp-4) !important;
+    }
+
+    /* ----- 8. DISCOVER / BROWSE PAGE ----- */
+    .discover-sKRNy {
+        background: transparent !important;
+        padding: var(--nyx-sp-6) var(--nyx-sp-8) !important;
+        width: 100% !important;
+    }
+
+    /* ----- 9. SEARCH PAGE ----- */
+    .search-guyhx {
+        background: transparent !important;
+        padding: var(--nyx-sp-6) var(--nyx-sp-8) !important;
+        width: 100% !important;
+    }
+
+    .search-guyhx input,
+    .search-guyhx input[type="text"] {
+        background: var(--nyx-glass-bg-light) !important;
+        border: 1px solid var(--nyx-border-default) !important;
+        border-radius: var(--nyx-radius-pill) !important;
+        color: var(--nyx-text-primary) !important;
+        font-size: var(--nyx-text-xl) !important;
+        padding: var(--nyx-sp-3) var(--nyx-sp-6) !important;
+        width: 100% !important;
+        max-width: 600px !important;
+    }
+
+    .search-guyhx input:focus {
+        border-color: var(--nyx-accent) !important;
+        box-shadow: 0 0 0 3px rgba(123,91,245,.2) !important;
+    }
+
+    /* ----- 10. SETTINGS PAGE ----- */
+    .settings-jvCLz {
+        background: transparent !important;
+        padding: var(--nyx-sp-8) !important;
+        max-width: 100% !important;
+    }
+
+    .option-pCk4g {
+        background: var(--nyx-surface-whisper) !important;
+        border-radius: var(--nyx-radius-lg) !important;
+        padding: var(--nyx-sp-4) var(--nyx-sp-5) !important;
+        margin-bottom: 4px !important;
+        border: 1px solid transparent !important;
+        transition: background-color var(--nyx-duration-fast) var(--nyx-ease-out),
+                    border-color var(--nyx-duration-fast) var(--nyx-ease-out) !important;
+    }
+
+    .option-pCk4g:hover,
+    .option-pCk4g[focused] {
+        background: var(--nyx-hover-overlay) !important;
+        border-color: var(--nyx-border-default) !important;
+    }
+
+    .option-pCk4g.selected-nAGeS {
+        background: var(--nyx-accent-subtle) !important;
+        border-left: 3px solid var(--nyx-accent) !important;
+    }
+
+    .option-McFMg {
+        background: var(--nyx-surface-whisper) !important;
+        border-radius: var(--nyx-radius-lg) !important;
+        padding: var(--nyx-sp-4) var(--nyx-sp-5) !important;
+        margin-bottom: 4px !important;
+    }
+
+    .toggle-EKrug {
+        background: rgba(255,255,255,.12) !important;
+        border-radius: var(--nyx-radius-pill) !important;
+    }
+
+    /* ----- 11. LIBRARY PAGE ----- */
+    .library-J0Lti {
+        background: transparent !important;
+        padding: var(--nyx-sp-6) var(--nyx-sp-8) !important;
+        width: 100% !important;
+    }
+
+    /* ----- 12. CONTENT ITEM CARDS (Nyx carousel-card style) ----- */
+    .item-_uIl6 {
+        border-radius: var(--nyx-radius-lg) !important;
+        overflow: hidden !important;
+        background: var(--nyx-card-bg) !important;
+        border: 1px solid var(--nyx-glass-border) !important;
+        position: relative !important;
+        transform: translateZ(0) !important;
+        will-change: transform !important;
+        transition: transform var(--nyx-duration-normal) var(--nyx-ease-bounce),
+                    box-shadow var(--nyx-duration-normal) var(--nyx-ease-out),
+                    border-color var(--nyx-duration-normal) var(--nyx-ease-out) !important;
+    }
+
+    .item-_uIl6:hover,
+    .item-_uIl6[focused] {
+        transform: scale(1.05) !important;
+        box-shadow: 0 0 0 2px var(--nyx-accent), 0 10px 20px rgba(0,0,0,.5) !important;
+        border-color: rgba(123,91,245,.3) !important;
+        z-index: 10 !important;
+    }
+
+    .poster-kFYpD {
+        border-radius: var(--nyx-radius-lg) !important;
+        overflow: hidden !important;
+        width: 100% !important;
+        aspect-ratio: 2/3 !important;
+    }
+
+    .poster-kFYpD img {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+        border-radius: var(--nyx-radius-lg) !important;
+    }
+
+    /* ----- 13. VIDEO / EPISODE CARDS ----- */
+    .video-xYWmH {
+        background: var(--nyx-surface-whisper) !important;
+        border: 1px solid var(--nyx-border-subtle) !important;
+        border-radius: var(--nyx-radius-lg) !important;
+        padding: var(--nyx-sp-3) var(--nyx-sp-4) !important;
+        margin-bottom: 4px !important;
+        transition: background-color var(--nyx-duration-fast) var(--nyx-ease-out),
+                    transform var(--nyx-duration-fast) var(--nyx-ease-out),
+                    border-color var(--nyx-duration-fast) var(--nyx-ease-out) !important;
+    }
+
+    .video-xYWmH:hover,
+    .video-xYWmH[focused] {
+        background: var(--nyx-accent-subtle) !important;
+        border-color: rgba(123,91,245,.25) !important;
+        transform: translateX(4px) !important;
+    }
+
+    .indicator-BeMF_ {
+        background: var(--nyx-accent) !important;
+        border-radius: var(--nyx-radius-md) !important;
+        font-size: var(--nyx-text-xs) !important;
+        font-weight: 700 !important;
+        padding: 2px 8px !important;
+        color: var(--nyx-text-primary) !important;
+    }
+
+    /* ----- 14. STREAM CARDS ----- */
+    .stream-rpXLF {
+        background: var(--nyx-card-bg) !important;
+        border: 1px solid var(--nyx-glass-border) !important;
+        border-radius: var(--nyx-radius-xl) !important;
+        padding: var(--nyx-sp-4) var(--nyx-sp-5) !important;
+        margin-bottom: var(--nyx-sp-2) !important;
+        transition: background-color var(--nyx-duration-fast) var(--nyx-ease-out),
+                    border-color var(--nyx-duration-fast) var(--nyx-ease-out) !important;
+    }
+
+    .stream-rpXLF:hover,
+    .stream-rpXLF[focused] {
+        background: rgba(123,91,245,.08) !important;
+        border-color: rgba(123,91,245,.3) !important;
+        box-shadow: var(--nyx-shadow-sm) !important;
+    }
+
+    .streams-SLRP_ {
+        padding: var(--nyx-sp-2) 0 !important;
+    }
+
+    /* ----- 15. PLAYER (full-screen, backdrop-filter OK here) ----- */
+    .player-SmYw4 {
+        position: fixed !important;
+        inset: 0 !important;
+        z-index: 2000 !important;
+        background: #000 !important;
+        margin-left: 0 !important;
+    }
+
+    .player-SmYw4 .overlay-A6U6H {
+        background: linear-gradient(
+            to top,
+            var(--nyx-glass-bg-player) 0%,
+            rgba(0,0,0,.4) 25%,
+            transparent 45%,
+            transparent 65%,
+            rgba(0,0,0,.35) 85%,
+            rgba(0,0,0,.5) 100%) !important;
+        backdrop-filter: blur(2px) !important;
+        -webkit-backdrop-filter: blur(2px) !important;
+    }
+
+    .control-HLtoF {
+        width: 52px !important;
+        height: 52px !important;
+        border-radius: 50% !important;
+        background: rgba(255,255,255,.1) !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        border: 1px solid rgba(255,255,255,.15) !important;
+        transition: background-color var(--nyx-duration-fast) var(--nyx-ease-out),
+                    transform var(--nyx-duration-fast) var(--nyx-ease-out) !important;
+    }
+
+    .control-HLtoF:hover,
+    .control-HLtoF[focused] {
+        background: rgba(123,91,245,.3) !important;
+        transform: scale(1.1) !important;
+        border-color: rgba(123,91,245,.4) !important;
+    }
+
+    .seekbar-oerpP {
+        height: 6px !important;
+        border-radius: var(--nyx-radius-pill) !important;
+        background: rgba(255,255,255,.15) !important;
+        transition: height var(--nyx-duration-fast) var(--nyx-ease-out) !important;
+    }
+
+    .seekbar-oerpP:hover,
+    .seekbar-oerpP[focused] {
+        height: 10px !important;
+    }
+
+    /* ----- 16. ITEM PREVIEW POPUP (full overlay, backdrop-filter OK) ----- */
+    .item-preview-nq13h {
+        background: var(--nyx-surface-modal) !important;
+        border-radius: var(--nyx-radius-2xl) !important;
+        border: 1px solid var(--nyx-glass-border) !important;
+        box-shadow: var(--nyx-shadow-xl) !important;
+        overflow: hidden !important;
+        backdrop-filter: blur(20px) saturate(160%) !important;
+        -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+    }
+
+    .info-container-iIxop {
+        padding: var(--nyx-sp-5) !important;
+    }
+
+    .details-wIL6Y {
+        color: rgba(255,255,255,.85) !important;
+    }
+
+    .description-ohb1N {
+        font-size: var(--nyx-text-md) !important;
+        line-height: var(--nyx-leading-normal) !important;
+        color: var(--nyx-text-muted) !important;
+    }
+
+    /* ----- 17. MODALS & OVERLAYS (full-screen, backdrop-filter OK) ----- */
+    [class*="modal"],
+    [class*="Modal"],
+    [class*="dialog"],
+    [class*="Dialog"] {
+        background: var(--nyx-surface-modal) !important;
+        border-radius: var(--nyx-radius-2xl) !important;
+        border: 1px solid var(--nyx-glass-border) !important;
+        box-shadow: var(--nyx-shadow-xl) !important;
+        backdrop-filter: var(--nyx-glass-blur-strong) !important;
+        -webkit-backdrop-filter: var(--nyx-glass-blur-strong) !important;
+    }
+
+    /* Modal backdrop / overlay */
+    [class*="overlay"]:not(.overlay-A6U6H):not(.overlay-IpSXf) {
+        background: var(--nyx-surface-overlay) !important;
+    }
+
+    /* ----- 18. TOAST NOTIFICATIONS ----- */
+    [class*="toast"],
+    [class*="Toast"],
+    [class*="notification"],
+    [class*="Notification"] {
+        background: var(--nyx-glass-bg-heavy) !important;
+        border-radius: var(--nyx-radius-xl) !important;
+        border: 1px solid var(--nyx-glass-border) !important;
+        box-shadow: var(--nyx-shadow-lg) !important;
+        color: var(--nyx-text-primary) !important;
+    }
+
+    /* ----- 19. LINKS ----- */
+    .link-ipF9m {
+        color: #a78bfa !important;
+        text-decoration: none !important;
+        transition: color var(--nyx-duration-fast) var(--nyx-ease-out) !important;
+    }
+
+    .link-ipF9m:hover {
+        color: #c4b5fd !important;
+    }
+
+    /* ----- 20. BUTTONS (Nyx glass button style) ----- */
+    button, [role="button"] {
+        background: var(--nyx-glass-bg-light) !important;
+        border: 1px solid var(--nyx-glass-border) !important;
+        border-radius: var(--nyx-radius-lg) !important;
+        color: var(--nyx-text-primary) !important;
+        cursor: pointer !important;
+        font-weight: 500 !important;
+        transition: background-color var(--nyx-duration-fast) var(--nyx-ease-out),
+                    border-color var(--nyx-duration-fast) var(--nyx-ease-out),
+                    transform var(--nyx-duration-fast) var(--nyx-ease-out) !important;
+    }
+
+    button:hover, [role="button"]:hover,
+    button[focused], [role="button"][focused] {
+        background: rgba(123,91,245,.12) !important;
+        border-color: rgba(123,91,245,.3) !important;
+    }
+
+    /* Primary / accent buttons */
+    button[class*="primary"],
+    button[class*="Primary"],
+    button[class*="action"],
+    button[class*="Action"] {
+        background: var(--nyx-accent) !important;
+        border: none !important;
+        color: var(--nyx-text-primary) !important;
+        font-weight: 600 !important;
+        box-shadow: var(--nyx-accent-glow) !important;
+    }
+
+    button[class*="primary"]:hover,
+    button[class*="Primary"]:hover,
+    button[class*="action"]:hover,
+    button[class*="Action"]:hover {
+        background: var(--nyx-accent-hover) !important;
+    }
+
+    /* ----- 21. INPUTS (Nyx glass style) ----- */
+    input, textarea, select {
+        background: var(--nyx-glass-bg-light) !important;
+        border: 1px solid var(--nyx-border-default) !important;
+        border-radius: var(--nyx-radius-lg) !important;
+        color: var(--nyx-text-primary) !important;
+        font-size: var(--nyx-text-base) !important;
+        padding: var(--nyx-sp-3) var(--nyx-sp-4) !important;
+    }
+
+    input:focus, textarea:focus, select:focus {
+        border-color: var(--nyx-accent) !important;
+        box-shadow: 0 0 0 3px rgba(123,91,245,.15) !important;
+    }
+
+    /* ----- 22. PAGE SHELL ----- */
     .page-jI4PO {
-        background-color: #0c0c10 !important;
+        background-color: transparent !important;
     }
 
     .page-jI4PO .inner-DXVjx {
         background-color: transparent !important;
     }
 
-    /* ----- NAVIGATION / SIDEBAR ----- */
-    .navbar-NNb1c {
-        z-index: 100 !important;
-    }
-
-    .navbar-NNb1c .background-xaXYe {
-        background-color: #0a0a14 !important;
-        border-right: 1px solid rgba(123,91,245,0.08) !important;
-    }
-
-    .navbar-NNb1c .backdrop-H4Hka {
-        background-color: rgba(6,6,10,0.85) !important;
-        backdrop-filter: blur(8px) !important;
-        -webkit-backdrop-filter: blur(8px) !important;
-    }
-
-    /* Navbar heading icon — larger for TV */
-    .navbar-NNb1c .content-IjaqZ .heading-QbiVt .icon-jD4Zd {
-        height: 4rem !important;
-        opacity: 0.7 !important;
-    }
-
-    .navbar-NNb1c .content-IjaqZ .heading-QbiVt .logo-lCpuw {
-        height: 4rem !important;
-    }
-
-    /* Navbar tabs container */
-    .navbar-NNb1c .content-IjaqZ .tabs-wr1wR {
-        gap: 0.25rem !important;
-    }
-
-    /* Tab items — larger icons and active indicator */
-    .tab-jVZYR {
-        height: 6rem !important;
-        width: 6.5rem !important;
-        border-radius: 1rem !important;
-        opacity: 0.4 !important;
-        position: relative !important;
-    }
-
-    .tab-jVZYR .icon-SZKt5 {
-        height: 2.8rem !important;
-        color: rgba(255,255,255,0.8) !important;
-    }
-
-    .tab-jVZYR .label-l7NFN {
-        left: 6.5rem !important;
-        font-size: 1.6rem !important;
-        font-weight: 600 !important;
-    }
-
-    /* Tab selected state — purple accent bar */
-    .tab-jVZYR.selected-L5m7b {
-        opacity: 1 !important;
-    }
-
-    .tab-jVZYR.selected-L5m7b::before {
-        content: "" !important;
-        position: absolute !important;
-        left: 0 !important;
-        top: 50% !important;
-        transform: translateY(-50%) !important;
-        width: 3px !important;
-        height: 60% !important;
-        border-radius: 0 3px 3px 0 !important;
-        background-color: #7b5bf5 !important;
-    }
-
-    .tab-jVZYR.selected-L5m7b .icon-SZKt5 {
-        color: #7b5bf5 !important;
-    }
-
-    /* Tab hover/focus state */
-    .tab-jVZYR[focused],
-    .tab-jVZYR:hover {
-        background-color: rgba(123,91,245,0.12) !important;
-        opacity: 1 !important;
-    }
-
-    .tab-jVZYR[focused] .label-l7NFN,
-    .tab-jVZYR:hover .label-l7NFN {
-        background-color: rgba(123,91,245,0.12) !important;
-    }
-
-    .tab-jVZYR[focused] .icon-SZKt5 {
-        color: #a78bfa !important;
-    }
-
-    /* ----- CONTENT CARDS (POSTERS) ----- */
-    .item-_uIl6 {
-        border-radius: 8px !important;
-        overflow: hidden !important;
-        background-color: rgba(255,255,255,0.03) !important;
-        border: 1px solid rgba(255,255,255,0.04) !important;
-        opacity: 0.8 !important;
-        transition: transform 0.15s ease-out, opacity 0.15s ease-out, box-shadow 0.15s ease-out !important;
-    }
-
-    .item-_uIl6 .image-FgkBk {
-        border-radius: 8px !important;
-    }
-
-    .item-_uIl6:hover {
-        opacity: 1 !important;
-        transform: scale(1.04) !important;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
-    }
-
-    .item-_uIl6[focused] {
-        opacity: 1 !important;
-        transform: scale(1.06) !important;
-        box-shadow: 0 0 0 2px #7b5bf5, 0 12px 40px rgba(123,91,245,0.2) !important;
-        border-color: transparent !important;
-    }
-
-    /* New-videos badge — pill style */
-    .item-_uIl6 .new-videos-VirbD .layer-D0Ouc {
-        border-radius: 0.5rem !important;
-    }
-
-    .item-_uIl6 .new-videos-VirbD .layer-D0Ouc:nth-child(3) {
-        background-color: #7b5bf5 !important;
-    }
-
-    .item-_uIl6 .new-videos-VirbD .layer-D0Ouc svg,
-    .item-_uIl6 .new-videos-VirbD .layer-D0Ouc .label-ggOL0 {
-        color: #fff !important;
-    }
-
-    /* Progress bar — purple accent */
-    .item-_uIl6 .progress-fSfLe {
-        border-radius: 4px !important;
-        background-color: rgba(255,255,255,0.08) !important;
-    }
-
-    .item-_uIl6 .progress-fSfLe .inner-b9vRs {
-        background-color: #7b5bf5 !important;
-        border-radius: 4px !important;
-    }
-
-    /* Watched badge */
-    .item-_uIl6 .watched-nM3bQ {
-        background-color: #7b5bf5 !important;
-    }
-
-    /* ----- CATALOG / BOARD ROWS ----- */
-    .catalog-Aq3BF {
-        margin-bottom: 3em !important;
-    }
-
-    .catalog-Aq3BF .title-EqKoF {
-        font-size: 2.4rem !important;
-        font-weight: 700 !important;
-        color: rgba(255,255,255,0.95) !important;
+    /* ----- 23. TYPOGRAPHY HIERARCHY ----- */
+    h1, [class*="heading"], [class*="Heading"] {
+        font-weight: 800 !important;
         letter-spacing: -0.02em !important;
+        color: var(--nyx-text-primary) !important;
     }
 
-    /* ----- HOME PAGE ----- */
-    .home-qPkGc {
-        background-color: #0c0c10 !important;
+    h2 {
+        font-size: var(--nyx-text-2xl) !important;
+        font-weight: 700 !important;
+        color: var(--nyx-text-primary) !important;
     }
 
-    /* Item preview / hero banner */
+    h3 {
+        font-size: var(--nyx-text-xl) !important;
+        font-weight: 600 !important;
+        color: var(--nyx-text-secondary) !important;
+    }
+
+    /* ----- 24. ANIMATIONS / KEYFRAMES (from Nyx) ----- */
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeInPop {
+        from { opacity: 0; transform: scale(.95); }
+        to { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+
+    @keyframes pulseGlow {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(123,91,245,.4); }
+        50% { box-shadow: 0 0 16px 4px rgba(123,91,245,.2); }
+    }
+
+    /* Apply entrance animations */
+    .details-omgjE .info-c3Gsa,
+    .details-d5pag .info-c3Gsa {
+        animation: slideUp var(--nyx-duration-slow) var(--nyx-ease-out) !important;
+    }
+
     .item-preview-nq13h {
-        overflow: visible !important;
+        animation: fadeInPop var(--nyx-duration-normal) var(--nyx-ease-spring) !important;
     }
 
-    .item-preview-nq13h .info-container-iIxop .title-Y5wf0 {
-        font-size: 4rem !important;
-        font-weight: 800 !important;
-        color: rgba(255,255,255,0.95) !important;
-        letter-spacing: -0.03em !important;
-        white-space: normal !important;
-        display: -webkit-box !important;
-        -webkit-box-orient: vertical !important;
-        -webkit-line-clamp: 2 !important;
-        overflow: hidden !important;
+    /* Catalog rows fade in */
+    .catalog-Aq3BF {
+        animation: fadeIn var(--nyx-duration-slow) var(--nyx-ease-out) !important;
     }
 
-    .item-preview-nq13h .info-container-iIxop .details-wIL6Y .description-ohb1N {
-        font-size: 1.5rem !important;
-        line-height: 2.2rem !important;
-        color: rgba(255,255,255,0.6) !important;
-        -webkit-line-clamp: 3 !important;
+    /* ----- 25. LOADING SKELETON (Nyx shimmer) ----- */
+    [class*="skeleton"],
+    [class*="Skeleton"],
+    [class*="placeholder"],
+    [class*="Placeholder"] {
+        background: linear-gradient(90deg,
+            var(--nyx-surface-whisper) 25%,
+            var(--nyx-hover-overlay) 50%,
+            var(--nyx-surface-whisper) 75%) !important;
+        background-size: 200% 100% !important;
+        animation: shimmer 1.5s infinite !important;
+        border-radius: var(--nyx-radius-md) !important;
     }
 
-    .item-preview-nq13h .info-container-iIxop .details-wIL6Y .info-MK7HE .label-qP8mN {
-        font-size: 1.4rem !important;
-        color: rgba(255,255,255,0.7) !important;
+    /* ----- 26. SELECTION & HIGHLIGHT ----- */
+    ::selection {
+        background: rgba(123,91,245,.35) !important;
+        color: var(--nyx-text-primary) !important;
     }
 
-    .item-preview-nq13h .info-container-iIxop .details-wIL6Y .cast-Iq4eA {
-        color: rgba(255,255,255,0.35) !important;
+    /* ----- 27. STATUS BADGES ----- */
+    [class*="badge"][class*="success"],
+    [class*="Badge"][class*="success"] {
+        background: rgba(70,211,105,.15) !important;
+        color: var(--nyx-success) !important;
     }
 
-    /* Hero background gradient — deeper fade */
-    .item-preview-nq13h .background-container-D9GP9 .background-inner-h_eaj .gradient-overlay-sYJZ9 {
-        background-image: linear-gradient(90deg, #0c0c10 0%, transparent 70%),
-                          linear-gradient(0deg, #0c0c10 0%, transparent 70%) !important;
+    [class*="badge"][class*="error"],
+    [class*="Badge"][class*="error"] {
+        background: rgba(239,68,68,.15) !important;
+        color: var(--nyx-error) !important;
     }
 
-    /* ----- DETAILS PAGE ----- */
-    .details-omgjE {
-        background-color: #0c0c10 !important;
+    /* ----- 28. DROPDOWN / MENU (Nyx glass style) ----- */
+    [class*="dropdown"],
+    [class*="Dropdown"],
+    [class*="menu-container"],
+    [class*="MenuContainer"] {
+        background: var(--nyx-glass-bg-heavy) !important;
+        border: 1px solid var(--nyx-glass-border) !important;
+        border-radius: var(--nyx-radius-xl) !important;
+        box-shadow: var(--nyx-shadow-lg) !important;
     }
 
-    .details-omgjE .background-G0atu .overlay-IpSXf {
-        background-color: #0c0c10 !important;
-        opacity: 0.88 !important;
+    /* ----- 29. PROGRESS BARS ----- */
+    [class*="progress"],
+    [class*="Progress"] {
+        background: rgba(255,255,255,.08) !important;
+        border-radius: var(--nyx-radius-pill) !important;
     }
 
-    .details-omgjE .info-c3Gsa {
-        height: 48vh !important;
-        padding: 3rem 4rem !important;
+    [class*="progress"] > *:first-child,
+    [class*="Progress"] > *:first-child {
+        background: var(--nyx-accent) !important;
+        border-radius: var(--nyx-radius-pill) !important;
     }
 
-    .details-omgjE .info-c3Gsa .title-OL31B {
-        font-size: 4.2rem !important;
-        font-weight: 800 !important;
-        color: rgba(255,255,255,0.95) !important;
-        letter-spacing: -0.03em !important;
-        white-space: normal !important;
-        display: -webkit-box !important;
-        -webkit-box-orient: vertical !important;
-        -webkit-line-clamp: 2 !important;
-        overflow: hidden !important;
+    /* ----- 30. FOCUSED CARD GLOW (TV D-pad enhancement) ----- */
+    .item-_uIl6[focused] {
+        animation: pulseGlow 2s ease-in-out infinite !important;
     }
 
-    .details-omgjE .info-c3Gsa .video-title-dEjBn {
-        font-size: 2.2rem !important;
-        color: rgba(255,255,255,0.8) !important;
-    }
-
-    .details-omgjE .info-c3Gsa .description-Vy9xR {
-        font-size: 1.6rem !important;
-        line-height: 2.4rem !important;
-        color: rgba(255,255,255,0.55) !important;
-        -webkit-line-clamp: 4 !important;
-    }
-
-    .details-omgjE .info-c3Gsa .video-date-U5BHg {
-        color: rgba(255,255,255,0.4) !important;
-    }
-
-    .details-omgjE .info-c3Gsa .logo-rSs1m {
-        border-radius: 12px !important;
-    }
-
-    /* ----- STREAMS ----- */
-    .stream-rpXLF {
-        border-radius: 10px !important;
-        background-color: rgba(255,255,255,0.04) !important;
-        border: 1px solid rgba(255,255,255,0.04) !important;
-        opacity: 0.7 !important;
-        transition: opacity 0.15s ease-out, transform 0.15s ease-out, box-shadow 0.15s ease-out !important;
-        height: 10rem !important;
-        width: 34rem !important;
-    }
-
-    .stream-rpXLF:hover,
     .stream-rpXLF[focused] {
-        opacity: 1 !important;
-        background-color: rgba(123,91,245,0.08) !important;
-        box-shadow: 0 0 0 1px rgba(123,91,245,0.3) !important;
-        border-color: rgba(123,91,245,0.2) !important;
-    }
-
-    .stream-rpXLF[focused] .play-icon-Z9iaQ {
-        background-color: #7b5bf5 !important;
-    }
-
-    .stream-rpXLF .play-icon-Z9iaQ .icon-MGVZf {
-        color: #fff !important;
-    }
-
-    .stream-rpXLF .details-d5pag .name-IfzDf {
-        font-size: 1.6rem !important;
-        color: rgba(255,255,255,0.9) !important;
-    }
-
-    .stream-rpXLF .details-d5pag .description-yTp1H {
-        color: rgba(255,255,255,0.45) !important;
-    }
-
-    /* Stream details panel */
-    .streams-ky0iI .stream-details-bgXP4 .inner-a1cem {
-        background-color: rgba(255,255,255,0.03) !important;
-        border: 1px solid rgba(255,255,255,0.04) !important;
-        border-radius: 12px !important;
-    }
-
-    .streams-ky0iI .stream-details-bgXP4 .inner-a1cem .name-pmYIm {
-        font-size: 2.2rem !important;
-        color: rgba(255,255,255,0.95) !important;
-    }
-
-    .streams-ky0iI .stream-details-bgXP4 .inner-a1cem .description-M3izB {
-        color: rgba(255,255,255,0.5) !important;
-    }
-
-    /* ----- VIDEO / EPISODE CARDS ----- */
-    .video-xYWmH {
-        border-radius: 10px !important;
-        opacity: 0.7 !important;
-        transition: transform 0.15s ease-out, opacity 0.15s ease-out, box-shadow 0.15s ease-out !important;
-    }
-
-    .video-xYWmH:hover {
-        opacity: 1 !important;
-        transform: scale(1.03) !important;
+        box-shadow: 0 0 0 2px var(--nyx-accent), var(--nyx-shadow-md) !important;
     }
 
     .video-xYWmH[focused] {
-        opacity: 1 !important;
-        transform: scale(1.06) !important;
-        box-shadow: 0 0 0 2px #7b5bf5, 0 12px 40px rgba(123,91,245,0.15) !important;
-    }
-
-    .video-xYWmH .indicator-BeMF_ {
-        border-radius: 8px !important;
-        background-color: rgba(12,12,16,0.9) !important;
-    }
-
-    /* ----- PLAYER ----- */
-    .player-SmYw4 {
-        background-color: #000 !important;
-    }
-
-    .player-SmYw4 .overlay-A6U6H {
-        padding: 2rem 3rem !important;
-        background: linear-gradient(0deg, rgba(12,12,16,0.95) 0%, rgba(12,12,16,0.6) 40%, transparent 100%) !important;
-        backdrop-filter: blur(4px) !important;
-        -webkit-backdrop-filter: blur(4px) !important;
-    }
-
-    .player-SmYw4 .overlay-A6U6H .info-zWSOJ {
-        font-size: 2.4rem !important;
-        font-weight: 700 !important;
-    }
-
-    .player-SmYw4 .overlay-A6U6H .footer-dgflJ .time-G7GFb {
-        font-size: 1.5rem !important;
-    }
-
-    /* Player controls — larger for TV */
-    .control-HLtoF {
-        min-width: 5rem !important;
-        min-height: 5rem !important;
-        border-radius: 50% !important;
-        transition: background-color 0.15s ease-out !important;
-    }
-
-    .control-HLtoF .icon-CHgvN {
-        height: 3rem !important;
-        width: 3rem !important;
-    }
-
-    .control-HLtoF[focused],
-    .control-HLtoF:hover {
-        background-color: rgba(123,91,245,0.2) !important;
-    }
-
-    /* Seekbar — larger thumb for TV */
-    .seekbar-oerpP {
-        height: 2.5rem !important;
-        padding: 0.5rem 0 !important;
-    }
-
-    .seekbar-oerpP .track-Xfs0A {
-        height: 6px !important;
-        border-radius: 3px !important;
-    }
-
-    .seekbar-oerpP .track-Xfs0A .before-LMEzS {
-        background-color: #7b5bf5 !important;
-        border-radius: 3px !important;
-    }
-
-    .seekbar-oerpP .track-Xfs0A .after-gTKS0 {
-        background-color: rgba(255,255,255,0.15) !important;
-        border-radius: 3px !important;
-    }
-
-    .seekbar-oerpP .thumb-PyYAw {
-        height: 18px !important;
-        width: 18px !important;
-        border-radius: 50% !important;
-        background-color: #7b5bf5 !important;
-        box-shadow: 0 0 12px rgba(123,91,245,0.5) !important;
-        transition: transform 0.15s ease-out !important;
-    }
-
-    .seekbar-oerpP[focused] .thumb-PyYAw,
-    .seekbar-oerpP:hover .thumb-PyYAw {
-        transform: scale(1.3) !important;
-    }
-
-    /* Next video popup */
-    .next-video-popup-grGJH {
-        border-radius: 12px !important;
-        backdrop-filter: blur(12px) !important;
-        -webkit-backdrop-filter: blur(12px) !important;
-    }
-
-    /* Player overlay settings */
-    .overlay-setting-nlIkp {
-        border-radius: 10px !important;
-    }
-
-    /* Intro/Outro popup */
-    .intro-outro-popup-U6iEs .button-FRNRT {
-        border-radius: 8px !important;
-        background-color: rgba(123,91,245,0.15) !important;
-    }
-
-    .intro-outro-popup-U6iEs .button-FRNRT.confirm-laDC1 {
-        background-color: #7b5bf5 !important;
-    }
-
-    /* ----- BUTTONS ----- */
-    .button-FYnSC {
-        border-radius: 10px !important;
-        transition: background-color 0.15s ease-out, box-shadow 0.15s ease-out !important;
-    }
-
-    .button-FYnSC .label-M7e3J {
-        font-size: 1.6rem !important;
-        font-weight: 600 !important;
-    }
-
-    .button-FYnSC .icon-vMHfQ {
-        height: 2.2rem !important;
-    }
-
-    .button-FYnSC[focused],
-    .button-FYnSC:hover {
-        background-color: rgba(123,91,245,0.15) !important;
-        box-shadow: 0 0 0 1px rgba(123,91,245,0.3) inset !important;
-    }
-
-    .button-FYnSC[focused] .icon-vMHfQ,
-    .button-FYnSC:hover .icon-vMHfQ,
-    .button-FYnSC[focused] .label-M7e3J,
-    .button-FYnSC:hover .label-M7e3J {
-        color: rgba(255,255,255,0.95) !important;
-    }
-
-    /* Floating action button */
-    .floating-button-qY_0s {
-        border-radius: 50px !important;
-        background-color: #7b5bf5 !important;
-        box-shadow: 0 4px 20px rgba(123,91,245,0.3) !important;
-        transition: transform 0.15s ease-out, box-shadow 0.15s ease-out !important;
-    }
-
-    .floating-button-qY_0s .icon-a5Zr_ {
-        color: #fff !important;
-    }
-
-    .floating-button-qY_0s .label-LgHt6 {
-        color: #fff !important;
-        font-weight: 700 !important;
-    }
-
-    .floating-button-qY_0s[focused],
-    .floating-button-qY_0s:hover {
-        transform: scale(1.05) !important;
-        box-shadow: 0 6px 28px rgba(123,91,245,0.45) !important;
-    }
-
-    /* ----- SELECT / DROPDOWN ----- */
-    .select-MDSgl .selected-ID7cq {
-        background-color: rgba(255,255,255,0.04) !important;
-        border-radius: 10px !important;
-        border: 1px solid rgba(255,255,255,0.06) !important;
-    }
-
-    .select-MDSgl .selected-ID7cq[focused],
-    .select-MDSgl .selected-ID7cq:hover {
-        border: 1px solid rgba(123,91,245,0.4) !important;
-        background-color: rgba(123,91,245,0.08) !important;
-    }
-
-    .select-MDSgl .menu-KiscI {
-        background-color: #141418 !important;
-        border: 1px solid rgba(255,255,255,0.06) !important;
-        border-radius: 10px !important;
-        box-shadow: 0 12px 40px rgba(0,0,0,0.6) !important;
-    }
-
-    /* Select option (filter menus) */
-    .option-McFMg[focused],
-    .option-McFMg:hover {
-        background-color: rgba(123,91,245,0.1) !important;
-    }
-
-    .option-McFMg.selected-LWWXM::after {
-        background-color: #7b5bf5 !important;
-    }
-
-    /* ----- SETTINGS PAGE ----- */
-    .settings-jvCLz {
-        background-color: #0c0c10 !important;
-    }
-
-    .option-pCk4g {
-        background-color: rgba(255,255,255,0.03) !important;
-        border-radius: 12px !important;
-        border: 1px solid rgba(255,255,255,0.03) !important;
-        width: 28rem !important;
-        transition: background-color 0.15s ease-out, box-shadow 0.15s ease-out !important;
-    }
-
-    .option-pCk4g[focused],
-    .option-pCk4g:hover,
-    .option-pCk4g.active-ZiGRo {
-        background-color: rgba(123,91,245,0.08) !important;
-        box-shadow: 0 0 0 1px rgba(123,91,245,0.3) inset !important;
-        border-color: rgba(123,91,245,0.15) !important;
-    }
-
-    .option-pCk4g .toggle-EKrug.checked {
-        background-color: #7b5bf5 !important;
-    }
-
-    .option-pCk4g.selected-nAGeS::before {
-        background-color: #7b5bf5 !important;
-    }
-
-    /* ----- SEARCH PAGE ----- */
-    .search-guyhx .heading-AvPuR {
-        backdrop-filter: blur(8px) !important;
-        -webkit-backdrop-filter: blur(8px) !important;
-    }
-
-    /* Text input — search bar */
-    .text-input-LytqN {
-        background-color: rgba(255,255,255,0.04) !important;
-        border: 1px solid rgba(255,255,255,0.06) !important;
-        border-radius: 12px !important;
-        color: rgba(255,255,255,0.9) !important;
-        font-size: 1.6rem !important;
-        height: 5rem !important;
-        transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out !important;
-    }
-
-    .text-input-LytqN[focused] {
-        border-color: rgba(123,91,245,0.5) !important;
-        box-shadow: 0 0 0 3px rgba(123,91,245,0.15) !important;
-    }
-
-    .text-input-LytqN::placeholder {
-        color: rgba(255,255,255,0.25) !important;
-    }
-
-    /* Search history */
-    .history-naEKv {
-        background-color: transparent !important;
-    }
-
-    .history-naEKv .button-zjUJY {
-        border-radius: 8px !important;
-    }
-
-    /* ----- LIBRARY PAGE ----- */
-    .library-J0Lti {
-        background-color: #0c0c10 !important;
-    }
-
-    .library-J0Lti .placeholder-zN3fb {
-        color: rgba(255,255,255,0.3) !important;
-    }
-
-    /* ----- DISCOVER PAGE ----- */
-    .discover-sKRNy {
-        background-color: #0c0c10 !important;
-    }
-
-    .discover-sKRNy .filters-C_DVW {
-        background-color: transparent !important;
-    }
-
-    /* ----- ADDONS PAGE ----- */
-    .addons-LUJe6 .heading-q2AKI .title-ZSLYp {
-        font-size: 2rem !important;
-        color: rgba(255,255,255,0.9) !important;
-    }
-
-    .addons-LUJe6 .heading-q2AKI .note-y2pKA {
-        color: rgba(255,255,255,0.4) !important;
-    }
-
-    /* ----- MODAL / DIALOG ----- */
-    .modal-En6m9 .backdrop-E33G3 {
-        background-color: rgba(6,6,10,0.85) !important;
-        backdrop-filter: blur(8px) !important;
-        -webkit-backdrop-filter: blur(8px) !important;
-    }
-
-    .modal-En6m9 .content-Sbj20 {
-        background-color: #18181f !important;
-        border: 1px solid rgba(255,255,255,0.06) !important;
-        border-radius: 16px !important;
-        box-shadow: 0 24px 64px rgba(0,0,0,0.5) !important;
-    }
-
-    .modal-En6m9 .content-Sbj20 .title-oqPGg {
-        font-size: 2.4rem !important;
-        color: rgba(255,255,255,0.95) !important;
-    }
-
-    /* ----- ITEM CONTEXT MENU ----- */
-    .item-menu-Ty9h2 .backdrop-KaBa1 {
-        background-color: rgba(6,6,10,0.85) !important;
-        backdrop-filter: blur(8px) !important;
-        -webkit-backdrop-filter: blur(8px) !important;
-    }
-
-    .item-menu-Ty9h2 .content-ACCI9 {
-        background-color: #111116 !important;
-        border-left: 1px solid rgba(255,255,255,0.06) !important;
-    }
-
-    /* ----- MENU (general menus like player settings) ----- */
-    .menu-wrO8D .heading-_TKTx .title-WzBAl {
-        font-size: 2.2rem !important;
-        font-weight: 700 !important;
-    }
-
-    /* ----- SCROLL CONTAINER ----- */
-    .scroll-container-vsSy7 .scroll-content-fpG1K {
-        transition: transform 0.3s ease-out !important;
-    }
-
-    .scroll-container-vsSy7 .control-I71Cd .icon-etnFR {
-        color: rgba(255,255,255,0.8) !important;
-    }
-
-    /* ----- TOAST NOTIFICATIONS ----- */
-    .toast-container-JtY8i .toast-hHAiN {
-        background-color: #1a1a24 !important;
-        border: 1px solid rgba(255,255,255,0.06) !important;
-        border-radius: 12px !important;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important;
-        backdrop-filter: blur(12px) !important;
-        -webkit-backdrop-filter: blur(12px) !important;
-    }
-
-    .toast-container-JtY8i .toast-hHAiN .title-Uxsgl {
-        color: rgba(255,255,255,0.9) !important;
-        font-weight: 700 !important;
-    }
-
-    .toast-container-JtY8i .toast-hHAiN .message-uEyVf {
-        color: rgba(255,255,255,0.5) !important;
-    }
-
-    /* ----- TEXT AREA ----- */
-    .text-area-OM_hT {
-        background-color: rgba(255,255,255,0.04) !important;
-        border: 1px solid rgba(255,255,255,0.06) !important;
-        border-radius: 12px !important;
-        color: rgba(255,255,255,0.9) !important;
-    }
-
-    .text-area-OM_hT[focused] {
-        border-color: rgba(123,91,245,0.5) !important;
-        box-shadow: 0 0 0 3px rgba(123,91,245,0.15) !important;
-    }
-
-    /* ----- LOADING STATE ----- */
-    .loading-container-bvgf_ .loading-bb0ms {
-        color: #7b5bf5 !important;
-    }
-
-    /* ----- RATINGS CONTAINER ----- */
-    .ratings-container-jMLVe .icon-container-bpiDU .icon-CxLqb {
-        color: #f5c518 !important;
-    }
-
-    /* ----- LINK STYLE ----- */
-    .link-ipF9m {
-        color: #a78bfa !important;
-    }
-
-    .link-ipF9m[focused],
-    .link-ipF9m:hover {
-        color: #c4b5fd !important;
-    }
-
-    /* Duplicate accent overrides removed — already declared in Settings section above */
-
-    /* ----- FOCUS RING REFINEMENT ----- */
-    [focused] {
-        outline-color: #7b5bf5 !important;
-    }
-
-    :focus-visible {
-        outline: 2px solid #7b5bf5 !important;
-        outline-offset: 2px !important;
+        box-shadow: 0 0 0 2px var(--nyx-accent), var(--nyx-shadow-sm) !important;
     }
     </style>
     <title>Stremio - Freedom to Stream</title>
