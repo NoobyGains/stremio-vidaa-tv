@@ -2340,6 +2340,9 @@
     }
 
     // ─── Inject VIDAA button into left column ────────────────────
+    // Pure clone of About — no stripping, no custom handlers, no z-index tricks.
+    // Just clone it exactly and change the label text. If it's a perfect copy,
+    // React's event delegation and the spatial nav system should treat it like About.
     var injected = false;
 
     setInterval(function() {
@@ -2352,111 +2355,18 @@
         var leftList = found.leftList;
         if (!aboutOption || !leftList) return;
 
-        var cls = getClassNames();
-
-        // Build VIDAA button by copying About's className and registering with
-        // the Stremio spatial navigation system (nav-id/nav-area).
-        // Key insight: Stremio uses a CUSTOM spatial nav system, NOT browser focus.
-        // Elements must have nav-id to be navigable and receive focus/clicks.
-        var vidaaBtn = document.createElement('div');
+        // PURE CLONE — exact copy of About, nothing stripped, nothing added
+        var vidaaBtn = aboutOption.cloneNode(true);
         vidaaBtn.id = 'vidaa-nav-btn';
-        vidaaBtn.className = aboutOption.className.replace(/\bselected-\S+/g, '').trim();
-        vidaaBtn.setAttribute('tabindex', '0');
 
-        // Register with spatial navigation — copy nav attributes from About
-        var aboutNavId = aboutOption.getAttribute('nav-id');
-        if (aboutNavId) {
-            // Generate a unique nav-id for our button
-            vidaaBtn.setAttribute('nav-id', 'vidaa-settings-' + Date.now());
-        }
-        // Copy nav-area reference if present
-        var aboutNavArea = aboutOption.closest('[nav-area]');
-        if (aboutNavArea) {
-            var areaId = aboutNavArea.getAttribute('nav-id');
-            // Our button inherits the same nav area since it's in the same list
-        }
-
-        // Copy the label structure
-        var aboutLabelEl = aboutOption.querySelector('[class*="label-"]');
-        var vidaaLabel = document.createElement('div');
-        if (aboutLabelEl) vidaaLabel.className = aboutLabelEl.className;
-        vidaaLabel.textContent = 'VIDAA';
-        vidaaBtn.appendChild(vidaaLabel);
-
-        // Copy the arrow SVG (last svg in About is the chevron-right)
-        var aboutArrows = aboutOption.querySelectorAll('svg');
-        if (aboutArrows.length > 0) {
-            var arrowSvg = aboutArrows[aboutArrows.length - 1].cloneNode(true);
-            stripReact(arrowSvg);
-            vidaaBtn.appendChild(arrowSvg);
-        }
-
-        // Copy the icon SVG if present (first svg is the icon)
-        if (aboutArrows.length > 1) {
-            var iconSvg = aboutArrows[0].cloneNode(true);
-            stripReact(iconSvg);
-            vidaaBtn.insertBefore(iconSvg, vidaaBtn.firstChild);
-        }
-
-        // Ensure button is clickable — the navbar backdrop (position:fixed, full viewport)
-        // blocks all native click events. React buttons work because React uses document-level
-        // event delegation. Our non-React button needs the backdrop disabled.
-        vidaaBtn.style.position = 'relative';
-        vidaaBtn.style.zIndex = '100';
-        vidaaBtn.style.cursor = 'pointer';
-
-        // Disable pointer-events on the navbar backdrop so clicks pass through
-        var backdrop = document.querySelector('[class*="backdrop-"]');
-        if (backdrop && backdrop.closest('[class*="navbar-"]')) {
-            backdrop.style.pointerEvents = 'none';
-            log('Disabled pointer-events on navbar backdrop');
-        }
-
-        // Focus handlers — set the focused attribute the nav system expects
-        vidaaBtn.addEventListener('focus', function() { vidaaBtn.setAttribute('focused', 'true'); });
-        vidaaBtn.addEventListener('blur', function() { vidaaBtn.removeAttribute('focused'); });
-        vidaaBtn.addEventListener('mouseenter', function() { vidaaBtn.setAttribute('focused', 'true'); });
-        vidaaBtn.addEventListener('mouseleave', function() { vidaaBtn.removeAttribute('focused'); });
-
-        // Click handler
-        function handleVidaaClick(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            log('VIDAA button clicked!');
-            var freshCls = getClassNames();
-            showVidaaPanelInRightCol(freshCls);
-            vidaaBtn.setAttribute('focused', 'true');
-            return false;
-        }
-
-        // Register click on BOTH the button and the label (in case clicks land on the label)
-        vidaaBtn.addEventListener('click', handleVidaaClick, true);
-        vidaaLabel.addEventListener('click', handleVidaaClick, true);
-        vidaaBtn.addEventListener('mousedown', function(e) {
-            // Force the click through even if backdrop intercepts
-            e.stopPropagation();
-            setTimeout(function() { handleVidaaClick(e); }, 0);
-        }, true);
-
-        vidaaBtn.addEventListener('keydown', function(e) {
-            if (e.keyCode === 13 || e.keyCode === 32) {
-                handleVidaaClick(e);
+        // Only change: the label text
+        var labels = vidaaBtn.querySelectorAll('div');
+        for (var k = 0; k < labels.length; k++) {
+            if (labels[k].children.length === 0 && labels[k].textContent.trim() === 'About') {
+                labels[k].textContent = 'VIDAA';
+                break;
             }
-        }, true);
-
-        // Also hook into the Stremio nav system's focus mechanism
-        // When the nav system focuses our element, trigger its internal handling
-        var observer = new MutationObserver(function(mutations) {
-            mutations.forEach(function(m) {
-                if (m.type === 'attributes' && m.attributeName === 'focused') {
-                    if (vidaaBtn.hasAttribute('focused')) {
-                        log('VIDAA button received spatial nav focus');
-                    }
-                }
-            });
-        });
-        observer.observe(vidaaBtn, { attributes: true });
+        }
 
         // Append after "About" in the left column
         if (aboutOption.nextSibling) {
