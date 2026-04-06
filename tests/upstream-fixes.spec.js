@@ -379,16 +379,25 @@ test.describe('#12 — Native player title', () => {
   });
 
   test('enhanced launcher sends platform messages when omi_platform is available', async ({ page }) => {
+    // Use addInitScript to set a stub launcher so #12's interval immediately wraps it
+    // (avoids waiting 10s for the setTimeout fallback)
+    await page.addInitScript(() => {
+      window.__launchNativePlayer = function stubForTesting(url) { return false; };
+      window.__testPlatformMessages = [];
+      window.omi_platform = {
+        sendPlatformMessage: function(msg) {
+          window.__testPlatformMessages.push(JSON.parse(msg));
+        }
+      };
+    });
+
     await page.goto('/');
-    await page.waitForTimeout(11000); // wait for __launchNativePlayer 10s timeout
+    // Wait for the 500ms interval to detect and wrap the stub launcher
+    await page.waitForTimeout(2000);
 
     const sent = await page.evaluate(() => {
-      var messages = [];
-      window.omi_platform = {
-        sendPlatformMessage: function(msg) { messages.push(JSON.parse(msg)); }
-      };
       try { window.__launchNativePlayer('http://stream.test/video.mp4'); } catch(e) {}
-      return messages;
+      return window.__testPlatformMessages || [];
     });
 
     // The enhanced launcher sends multiple message types (launchNativePlayer, openMediaPlayer, playVideo)
@@ -541,8 +550,14 @@ test.describe('#15 — Prefetch next episode', () => {
 // ==========================================================================
 test.describe('Integration', () => {
   test('all patch globals are defined after page load', async ({ page }) => {
+    // Set a stub __launchNativePlayer so #12's interval wraps it immediately
+    // (avoids waiting 10s for the setTimeout fallback)
+    await page.addInitScript(() => {
+      window.__launchNativePlayer = function() { return false; };
+    });
+
     await page.goto('/');
-    await page.waitForTimeout(11000);
+    await page.waitForTimeout(2000); // wait for intervals to set up globals
 
     const globals = await page.evaluate(() => ({
       exitApp: typeof window.__exitApp,
