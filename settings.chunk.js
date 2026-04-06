@@ -618,32 +618,46 @@
                         icon: "about",
                         options: [{
                             label: "Force Stereo",
-                            checked: () => localStorage.getItem('stremio_force_stereo') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_force_stereo') !== 'true'; localStorage.setItem('stremio_force_stereo', v); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_force_stereo'}); if (c&&c.onToggle) c.onToggle(v); } }
+                            options: [{
+                                checked: () => localStorage.getItem('stremio_force_stereo') === 'true',
+                                onClick: () => { var v = localStorage.getItem('stremio_force_stereo') !== 'true'; localStorage.setItem('stremio_force_stereo', String(v)); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_force_stereo'}); if (c&&c.onToggle) c.onToggle(v); } }
+                            }]
                         }, {
                             label: "Audio Delay",
-                            checked: () => localStorage.getItem('stremio_audio_delay_enabled') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_audio_delay_enabled') !== 'true'; localStorage.setItem('stremio_audio_delay_enabled', v); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_audio_delay_enabled'}); if (c&&c.onToggle) c.onToggle(v); } }
+                            options: [{
+                                checked: () => localStorage.getItem('stremio_audio_delay_enabled') === 'true',
+                                onClick: () => { var v = localStorage.getItem('stremio_audio_delay_enabled') !== 'true'; localStorage.setItem('stremio_audio_delay_enabled', String(v)); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_audio_delay_enabled'}); if (c&&c.onToggle) c.onToggle(v); } }
+                            }]
                         }, {
                             label: "Auto-Play Stream",
-                            checked: () => localStorage.getItem('stremio_autoplay_best') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_autoplay_best') !== 'true'; localStorage.setItem('stremio_autoplay_best', v); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_autoplay_best'}); if (c&&c.onToggle) c.onToggle(v); } }
+                            options: [{
+                                checked: () => localStorage.getItem('stremio_autoplay_best') === 'true',
+                                onClick: () => { var v = localStorage.getItem('stremio_autoplay_best') !== 'true'; localStorage.setItem('stremio_autoplay_best', String(v)); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_autoplay_best'}); if (c&&c.onToggle) c.onToggle(v); } }
+                            }]
                         }, {
                             label: "Mark Season",
-                            checked: () => localStorage.getItem('stremio_mark_season') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_mark_season') !== 'true'; localStorage.setItem('stremio_mark_season', v); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_mark_season'}); if (c&&c.onToggle) c.onToggle(v); } }
+                            options: [{
+                                checked: () => localStorage.getItem('stremio_mark_season') === 'true',
+                                onClick: () => { var v = localStorage.getItem('stremio_mark_season') !== 'true'; localStorage.setItem('stremio_mark_season', String(v)); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_mark_season'}); if (c&&c.onToggle) c.onToggle(v); } }
+                            }]
                         }, {
                             label: "Subtitle Drift Fix",
-                            checked: () => localStorage.getItem('stremio_sub_drift_fix') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_sub_drift_fix') !== 'true'; localStorage.setItem('stremio_sub_drift_fix', v); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_sub_drift_fix'}); if (c&&c.onToggle) c.onToggle(v); } }
+                            options: [{
+                                checked: () => localStorage.getItem('stremio_sub_drift_fix') === 'true',
+                                onClick: () => { var v = localStorage.getItem('stremio_sub_drift_fix') !== 'true'; localStorage.setItem('stremio_sub_drift_fix', String(v)); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_sub_drift_fix'}); if (c&&c.onToggle) c.onToggle(v); } }
+                            }]
                         }, {
                             label: "720p Zoom",
-                            checked: () => localStorage.getItem('stremio_720p_zoom') !== 'false',
-                            onClick: () => { var v = localStorage.getItem('stremio_720p_zoom') === 'false'; localStorage.setItem('stremio_720p_zoom', v ? 'true' : 'false'); if (v) { if (window.__applyZoom) window.__applyZoom(); } else { if (window.__removeZoom) window.__removeZoom(); } }
+                            options: [{
+                                checked: () => localStorage.getItem('stremio_720p_zoom') !== 'false',
+                                onClick: () => { var v = localStorage.getItem('stremio_720p_zoom') === 'false'; localStorage.setItem('stremio_720p_zoom', v ? 'true' : 'false'); if (v) { if (window.__applyZoom) window.__applyZoom(); } else { if (window.__removeZoom) window.__removeZoom(); } }
+                            }]
                         }, {
                             label: "Torrent Streaming",
-                            checked: () => localStorage.getItem('stremio_webtorrent_enabled') === 'true',
-                            onClick: () => { var v = localStorage.getItem('stremio_webtorrent_enabled') !== 'true'; localStorage.setItem('stremio_webtorrent_enabled', v); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_webtorrent_enabled'}); if (c&&c.onToggle) c.onToggle(v); } }
+                            options: [{
+                                checked: () => localStorage.getItem('stremio_webtorrent_enabled') === 'true',
+                                onClick: () => { var v = localStorage.getItem('stremio_webtorrent_enabled') !== 'true'; localStorage.setItem('stremio_webtorrent_enabled', String(v)); if (window.__vidaaSettingsItems) { var c = window.__vidaaSettingsItems.find(function(i){return i.lsKey==='stremio_webtorrent_enabled'}); if (c&&c.onToggle) c.onToggle(v); } }
+                            }]
                         }, {
                             disabled: () => "Web" === p.name,
                             label: "Exit Stremio",
