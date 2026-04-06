@@ -617,22 +617,22 @@
                         label: "VIDAA",
                         icon: "about",
                         options: (function() {
-                            // Helper: create a SolidJS-compatible reactive toggle
-                            // localStorage is NOT reactive, so we use a closure variable
-                            // that gets toggled on click, making checked() return the new value
-                            function makeToggle(label, lsKey, onToggle) {
-                                var state = localStorage.getItem(lsKey) === 'true';
+                            // SolidJS only re-renders when reactive signals change.
+                            // localStorage is NOT reactive. Fix: read b() (settings signal)
+                            // inside checked() to make SolidJS track it, then call v({})
+                            // (empty updateSettings) after toggling to force re-render.
+                            function makeToggle(label, lsKey) {
                                 return {
                                     label: label,
                                     options: [{
-                                        checked: () => state,
+                                        checked: () => { b(); return localStorage.getItem(lsKey) === 'true'; },
                                         onClick: () => {
-                                            state = !state;
-                                            localStorage.setItem(lsKey, String(state));
-                                            if (onToggle) onToggle(state);
+                                            var now = localStorage.getItem(lsKey) !== 'true';
+                                            localStorage.setItem(lsKey, String(now));
+                                            v({}); // trigger SolidJS re-render
                                             if (window.__vidaaSettingsItems) {
                                                 var c = window.__vidaaSettingsItems.find(function(i) { return i.lsKey === lsKey; });
-                                                if (c && c.onToggle) c.onToggle(state);
+                                                if (c && c.onToggle) c.onToggle(now);
                                             }
                                         }
                                     }]
@@ -647,11 +647,12 @@
                                 {
                                     label: "720p Zoom",
                                     options: [{
-                                        checked: function() { return localStorage.getItem('stremio_720p_zoom') !== 'false'; },
-                                        onClick: function() {
-                                            var v = localStorage.getItem('stremio_720p_zoom') === 'false';
-                                            localStorage.setItem('stremio_720p_zoom', v ? 'true' : 'false');
-                                            if (v) { if (window.__applyZoom) window.__applyZoom(); }
+                                        checked: () => { b(); return localStorage.getItem('stremio_720p_zoom') !== 'false'; },
+                                        onClick: () => {
+                                            var now = localStorage.getItem('stremio_720p_zoom') === 'false';
+                                            localStorage.setItem('stremio_720p_zoom', now ? 'true' : 'false');
+                                            v({});
+                                            if (now) { if (window.__applyZoom) window.__applyZoom(); }
                                             else { if (window.__removeZoom) window.__removeZoom(); }
                                         }
                                     }]
