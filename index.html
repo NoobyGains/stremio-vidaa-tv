@@ -3348,7 +3348,7 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
     var MEM_WARN_THRESHOLD = 0.85; // 85% heap usage triggers warning
 
     function isEnabled() {
-        try { return localStorage.getItem(LS_KEY) === 'true'; } catch(e) { return false; }
+        return localStorage.getItem(LS_KEY) !== 'false';
     }
 
     function log() {
@@ -3490,7 +3490,7 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
     var MAX_RETRIES = 3;
 
     function isEnabled() {
-        try { return localStorage.getItem(LS_KEY) === 'true'; } catch(e) { return false; }
+        return localStorage.getItem(LS_KEY) !== 'false';
     }
 
     function log() {
@@ -3668,7 +3668,7 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
     var TOGGLE_KEY = 457; // Info/Display remote button
 
     function isEnabled() {
-        try { return localStorage.getItem(LS_KEY) === 'true'; } catch(e) { return false; }
+        return localStorage.getItem(LS_KEY) !== 'false';
     }
 
     function log() {
