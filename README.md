@@ -194,7 +194,7 @@ These were already in the build before the above patches:
 
 | Button | Action |
 |---|---|
-| **Red** | Toggle resolution indicator |
+| **Red** | Toggle resolution indicator (or Stream Stats overlay in player when enabled) |
 | **Green** | Show/hide server health overlay (status, latency, version) |
 | **Yellow** | Open current stream in native VIDAA player (full hardware DV/HDR decode) |
 | **Blue** | Force transcode current stream |

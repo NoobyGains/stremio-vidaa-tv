@@ -523,9 +523,15 @@
         var code = e.keyCode;
 
         // Red (403) — toggle quality indicator
+        // Skip if Stream Stats overlay is enabled and we're in the player
+        // (Red is used for stats toggle there instead)
         if (code === 403) {
-            var qi = document.getElementById('quality-indicator');
-            if (qi) qi.style.display = qi.style.display === 'none' ? 'block' : 'none';
+            var inPlayer = (window.location.hash || '').indexOf('#/player/') !== -1;
+            var statsEnabled = localStorage.getItem('stremio_stream_stats') !== 'false';
+            if (!(inPlayer && statsEnabled)) {
+                var qi = document.getElementById('quality-indicator');
+                if (qi) qi.style.display = qi.style.display === 'none' ? 'block' : 'none';
+            }
         }
 
         // Green (404) — toggle server health overlay
@@ -940,9 +946,18 @@
                 if (!playerFixStyle) {
                     playerFixStyle = document.createElement('style');
                     playerFixStyle.id = 'vidaa-player-fit';
-                    // Only remove zoom — don't force video positioning.
-                    // The player layout handles its own sizing.
-                    playerFixStyle.textContent = '';
+                    // Constrain the player container to the viewport, but do NOT
+                    // touch the <video> element — position:fixed on video causes
+                    // green/blue color corruption on some TVs (e.g. 55Q6QV).
+                    // The player layout handles video sizing itself.
+                    playerFixStyle.textContent = [
+                        '#root { width: 100vw !important; height: 100vh !important; overflow: hidden !important; }',
+                        '[class*="player-"] { width: 100vw !important; height: 100vh !important; }',
+                        /* Scale down subtitles and player UI controls for 720p */
+                        '[class*="subtitle"], [class*="Subtitle"] { font-size: 65% !important; }',
+                        '[class*="control"], [class*="Control"], [class*="bar-"], [class*="Bar-"] { transform: scale(0.65) !important; transform-origin: bottom center !important; }',
+                        '[class*="info-"], [class*="title-"], [class*="next-video"] { font-size: 65% !important; }'
+                    ].join('\n');
                     document.head.appendChild(playerFixStyle);
                 }
                 console.log('[zoom] Disabled zoom + applied player fit CSS');
