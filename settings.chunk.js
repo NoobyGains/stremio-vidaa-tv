@@ -625,13 +625,13 @@
                                 g.setAnimations(!a);
                                 setTimeout(function() { g.setAnimations(a); }, 50);
                             }
-                            function makeToggle(label, lsKey, extra) {
+                            function makeToggle(label, lsKey, extra, defaultOn) {
                                 return {
                                     label: label,
                                     options: [{
-                                        checked: () => { g.animations(); return localStorage.getItem(lsKey) === 'true'; },
+                                        checked: () => { g.animations(); return defaultOn ? localStorage.getItem(lsKey) !== 'false' : localStorage.getItem(lsKey) === 'true'; },
                                         onClick: () => {
-                                            var now = localStorage.getItem(lsKey) !== 'true';
+                                            var now = defaultOn ? localStorage.getItem(lsKey) === 'false' : localStorage.getItem(lsKey) !== 'true';
                                             localStorage.setItem(lsKey, String(now));
                                             forceRerender();
                                             if (extra) extra(now);
@@ -655,10 +655,10 @@
                                 }),
                                 makeToggle("Disable Zoom in Player", "stremio_zoom_disable_in_player"),
                                 makeToggle("Torrent Streaming", "stremio_webtorrent_enabled"),
-                                makeToggle("Low Memory Mode", "stremio_low_memory"),
-                                makeToggle("Auto-Rebuffer", "stremio_auto_rebuffer"),
-                                makeToggle("Stream Stats", "stremio_stream_stats"),
-                                makeToggle("Playback Warning", "stremio_playback_warning"),
+                                makeToggle("Low Memory Mode", "stremio_low_memory", null, true),
+                                makeToggle("Auto-Rebuffer", "stremio_auto_rebuffer", null, true),
+                                makeToggle("Stream Stats", "stremio_stream_stats", null, true),
+                                makeToggle("Playback Warning", "stremio_playback_warning", null, true),
                                 {
                                     disabled: () => "Web" === p.name,
                                     label: "Exit Stremio",
