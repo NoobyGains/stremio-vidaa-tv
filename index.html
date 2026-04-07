@@ -926,17 +926,33 @@
 
         // Auto-disable zoom in player route (for TVs where zoom breaks aspect ratio)
         // Only active when "Disable Zoom in Player" toggle is ON
+        // When zoom is removed, the player UI overflows on 720p viewports,
+        // so we also add CSS to constrain the video and player container.
         var lastPlayerState = false;
+        var playerFixStyle = null;
         setInterval(function() {
             if (localStorage.getItem(PLAYER_ZOOM_KEY) !== 'true') return;
             if (localStorage.getItem(ZOOM_KEY) === 'false') return;
             var inPlayer = (window.location.hash || '').indexOf('#/player/') === 0;
             if (inPlayer && !lastPlayerState) {
                 document.body.style.zoom = '';
-                console.log('[zoom] Temporarily disabled zoom for player');
-            } else if (!inPlayer && lastPlayerState && window.screen720p) {
-                document.body.style.zoom = '65%';
-                console.log('[zoom] Restored zoom after leaving player');
+                // Add CSS to fit player content to viewport without zoom
+                if (!playerFixStyle) {
+                    playerFixStyle = document.createElement('style');
+                    playerFixStyle.id = 'vidaa-player-fit';
+                    playerFixStyle.textContent = [
+                        'video { width: 100vw !important; height: 100vh !important; object-fit: contain !important; position: fixed !important; top: 0 !important; left: 0 !important; }',
+                        '#root { width: 100vw !important; height: 100vh !important; overflow: hidden !important; }',
+                        '[class*="player-"] { width: 100vw !important; height: 100vh !important; }'
+                    ].join('\n');
+                    document.head.appendChild(playerFixStyle);
+                }
+                console.log('[zoom] Disabled zoom + applied player fit CSS');
+            } else if (!inPlayer && lastPlayerState) {
+                if (window.screen720p) document.body.style.zoom = '65%';
+                // Remove player fit CSS
+                if (playerFixStyle) { playerFixStyle.remove(); playerFixStyle = null; }
+                console.log('[zoom] Restored zoom, removed player fit CSS');
             }
             lastPlayerState = inPlayer;
         }, 500);
