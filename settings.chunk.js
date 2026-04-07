@@ -658,6 +658,7 @@
                                 makeToggle("Low Memory Mode", "stremio_low_memory"),
                                 makeToggle("Auto-Rebuffer", "stremio_auto_rebuffer"),
                                 makeToggle("Stream Stats", "stremio_stream_stats"),
+                                makeToggle("Playback Warning", "stremio_playback_warning"),
                                 {
                                     disabled: () => "Web" === p.name,
                                     label: "Exit Stremio",
