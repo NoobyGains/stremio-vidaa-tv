@@ -3754,35 +3754,15 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
         }
     }
 
-    var autoHideTimer = null;
-
-    function showWithAutoHide() {
-        statsVisible = true;
-        if (overlay) overlay.style.display = 'block';
-        // Auto-hide after 10 seconds
-        if (autoHideTimer) clearTimeout(autoHideTimer);
-        autoHideTimer = setTimeout(function() {
-            statsVisible = false;
-            if (overlay) overlay.style.display = 'none';
-            log('Stats overlay auto-hidden after 10s');
-        }, 10000);
-    }
-
     function onKeyDown(e) {
         if (!isEnabled()) return;
         if (!inPlayerRoute()) return;
-        // Toggle with Info (457) or Red (403) — same button shows/hides
+        // Toggle with Info (457) or Red (403) — simple on/off, no auto-hide
         if (e.keyCode === 457 || e.keyCode === 403) {
-            e.stopPropagation(); // prevent Red from also toggling quality indicator
-            if (statsVisible) {
-                statsVisible = false;
-                if (overlay) overlay.style.display = 'none';
-                if (autoHideTimer) { clearTimeout(autoHideTimer); autoHideTimer = null; }
-                log('Stats overlay hidden');
-            } else {
-                showWithAutoHide();
-                log('Stats overlay shown');
-            }
+            e.stopPropagation();
+            statsVisible = !statsVisible;
+            if (overlay) overlay.style.display = statsVisible ? 'block' : 'none';
+            log('Stats overlay', statsVisible ? 'shown' : 'hidden');
         }
     }
 
