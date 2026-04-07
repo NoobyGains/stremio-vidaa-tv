@@ -910,6 +910,8 @@
     (function() {
         var ZOOM_KEY = 'stremio_720p_zoom';
 
+        var PLAYER_ZOOM_KEY = 'stremio_zoom_disable_in_player';
+
         // Expose for toggle
         window.__applyZoom = function() {
             document.body.style.zoom = '65%';
@@ -921,6 +923,23 @@
             window.screen720p = false;
             console.log('[zoom] Removed 720p zoom');
         };
+
+        // Auto-disable zoom in player route (for TVs where zoom breaks aspect ratio)
+        // Only active when "Disable Zoom in Player" toggle is ON
+        var lastPlayerState = false;
+        setInterval(function() {
+            if (localStorage.getItem(PLAYER_ZOOM_KEY) !== 'true') return;
+            if (localStorage.getItem(ZOOM_KEY) === 'false') return;
+            var inPlayer = (window.location.hash || '').indexOf('#/player/') === 0;
+            if (inPlayer && !lastPlayerState) {
+                document.body.style.zoom = '';
+                console.log('[zoom] Temporarily disabled zoom for player');
+            } else if (!inPlayer && lastPlayerState && window.screen720p) {
+                document.body.style.zoom = '65%';
+                console.log('[zoom] Restored zoom after leaving player');
+            }
+            lastPlayerState = inPlayer;
+        }, 500);
 
         setTimeout(function() {
             window.screen720p = false;

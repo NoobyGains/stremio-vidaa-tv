@@ -653,6 +653,7 @@
                                     if (now) { if (window.__applyZoom) window.__applyZoom(); }
                                     else { if (window.__removeZoom) window.__removeZoom(); }
                                 }),
+                                makeToggle("Disable Zoom in Player", "stremio_zoom_disable_in_player"),
                                 makeToggle("Torrent Streaming", "stremio_webtorrent_enabled"),
                                 makeToggle("Low Memory Mode", "stremio_low_memory"),
                                 makeToggle("Auto-Rebuffer", "stremio_auto_rebuffer"),
