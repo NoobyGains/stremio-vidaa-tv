@@ -3612,7 +3612,7 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
 
     var overlay = null;
     var updateInterval = null;
-    var statsVisible = true;
+    var statsVisible = false; // starts hidden, press any color button to show
     var bytesAtLastCheck = 0;
     var timeAtLastCheck = 0;
 
@@ -3725,8 +3725,10 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
     function startUpdating() {
         if (updateInterval) return;
         createOverlay();
+        // Start hidden — user presses a button to show
+        if (overlay) overlay.style.display = 'none';
+        statsVisible = false;
         updateInterval = setInterval(updateStats, UPDATE_INTERVAL);
-        updateStats();
         log('Stats overlay started');
     }
 
@@ -3748,12 +3750,35 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
         }
     }
 
+    var autoHideTimer = null;
+
+    function showWithAutoHide() {
+        statsVisible = true;
+        if (overlay) overlay.style.display = 'block';
+        // Auto-hide after 10 seconds
+        if (autoHideTimer) clearTimeout(autoHideTimer);
+        autoHideTimer = setTimeout(function() {
+            statsVisible = false;
+            if (overlay) overlay.style.display = 'none';
+            log('Stats overlay auto-hidden after 10s');
+        }, 10000);
+    }
+
     function onKeyDown(e) {
         if (!isEnabled()) return;
-        if (e.keyCode === TOGGLE_KEY && inPlayerRoute()) {
-            statsVisible = !statsVisible;
-            if (overlay) overlay.style.display = statsVisible ? 'block' : 'none';
-            log('Stats overlay toggled:', statsVisible ? 'visible' : 'hidden');
+        if (!inPlayerRoute()) return;
+        // Toggle with Info (457) or Red (403) — same button shows/hides
+        if (e.keyCode === 457 || e.keyCode === 403) {
+            e.stopPropagation(); // prevent Red from also toggling quality indicator
+            if (statsVisible) {
+                statsVisible = false;
+                if (overlay) overlay.style.display = 'none';
+                if (autoHideTimer) { clearTimeout(autoHideTimer); autoHideTimer = null; }
+                log('Stats overlay hidden');
+            } else {
+                showWithAutoHide();
+                log('Stats overlay shown');
+            }
         }
     }
 
