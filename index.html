@@ -204,9 +204,19 @@
 // - Content >4K (4320p/8K upscale): black screen (decoder limit)
 // - HEVC 4K 10-bit: plays fine
 // - AV1: not supported
+// NOTE: Other TVs may have different codec support — users can disable
+// the playback warning via Settings > VIDAA > Playback Warning
 (function() {
+    var WARN_KEY = 'stremio_playback_warning';
     window.__DV_PROFILE7_DETECTED__ = false;
     window.__STREAM_INFO__ = {};
+
+    // Default to ON for new users — set the key if it doesn't exist yet
+    try { if (localStorage.getItem(WARN_KEY) === null) localStorage.setItem(WARN_KEY, 'true'); } catch(e) {}
+
+    function isWarningEnabled() {
+        try { return localStorage.getItem(WARN_KEY) === 'true'; } catch(e) { return false; }
+    }
 
     // Monitor video element for playback failures — warn only on actual failure
     var watchInterval = null;
@@ -219,6 +229,7 @@
                 if (watchInterval) { clearInterval(watchInterval); watchInterval = null; }
                 return;
             }
+            if (!isWarningEnabled()) return; // User disabled playback warning
             var video = document.querySelector('video');
             if (!video) return;
 
@@ -377,6 +388,20 @@
         setTimeout(function() { transBtn.focus(); }, 100);
     }
     window.__showPlaybackWarning = showPlaybackWarning;
+
+    // Register settings toggle
+    var regInterval = setInterval(function() {
+        if (!window.__registerVidaaSettingsItem) return;
+        clearInterval(regInterval);
+        window.__registerVidaaSettingsItem({
+            id: 'playback-warning-toggle',
+            type: 'toggle',
+            label: 'Playback Warning',
+            description: 'Shows a warning overlay when playback stalls (codec/container issues). Disable if your TV handles all formats fine.',
+            lsKey: WARN_KEY,
+            defaultValue: true
+        });
+    }, 200);
 })();
 </script>
 <script>
@@ -950,13 +975,15 @@
                     // touch the <video> element — position:fixed on video causes
                     // green/blue color corruption on some TVs (e.g. 55Q6QV).
                     // The player layout handles video sizing itself.
+                    // Use CSS transform to scale the entire player layout from
+                    // 1080p down to 720p. This is similar to what zoom:0.65 does
+                    // but transform doesn't corrupt the video compositor on the
+                    // 55Q6QV. The scale origin is top-left so content stays
+                    // anchored to the viewport corner. We set the root to 1080p
+                    // dimensions (100vw/0.667 ≈ 150vw at 720p) so the scaled
+                    // result fits exactly in the 720p viewport.
                     playerFixStyle.textContent = [
-                        '#root { width: 100vw !important; height: 100vh !important; overflow: hidden !important; }',
-                        '[class*="player-"] { width: 100vw !important; height: 100vh !important; }',
-                        /* Scale down subtitles and player UI controls for 720p */
-                        '[class*="subtitle"], [class*="Subtitle"] { font-size: 65% !important; }',
-                        '[class*="control"], [class*="Control"], [class*="bar-"], [class*="Bar-"] { transform: scale(0.65) !important; transform-origin: bottom center !important; }',
-                        '[class*="info-"], [class*="title-"], [class*="next-video"] { font-size: 65% !important; }'
+                        '#root { transform: scale(0.667) !important; transform-origin: top left !important; width: 150vw !important; height: 150vh !important; }'
                     ].join('\n');
                     document.head.appendChild(playerFixStyle);
                 }
