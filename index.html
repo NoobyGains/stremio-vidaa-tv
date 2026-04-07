@@ -975,15 +975,15 @@
                     // touch the <video> element — position:fixed on video causes
                     // green/blue color corruption on some TVs (e.g. 55Q6QV).
                     // The player layout handles video sizing itself.
-                    // Use CSS transform to scale the entire player layout from
-                    // 1080p down to 720p. This is similar to what zoom:0.65 does
-                    // but transform doesn't corrupt the video compositor on the
-                    // 55Q6QV. The scale origin is top-left so content stays
-                    // anchored to the viewport corner. We set the root to 1080p
-                    // dimensions (100vw/0.667 ≈ 150vw at 720p) so the scaled
-                    // result fits exactly in the 720p viewport.
+                    // Use CSS transform to scale the entire player layout down
+                    // to match the 720p viewport. Uses the same 0.65 factor as
+                    // the UI zoom so player and UI feel consistent.
+                    // transform doesn't corrupt the video compositor on the
+                    // 55Q6QV like zoom does. Scale origin top-left keeps content
+                    // anchored. Root set to 1/0.65 ≈ 153.8% so scaled result
+                    // fills the viewport exactly.
                     playerFixStyle.textContent = [
-                        '#root { transform: scale(0.667) !important; transform-origin: top left !important; width: 150vw !important; height: 150vh !important; }'
+                        '#root { transform: scale(0.65) !important; transform-origin: top left !important; width: 153.85vw !important; height: 153.85vh !important; }'
                     ].join('\n');
                     document.head.appendChild(playerFixStyle);
                 }
