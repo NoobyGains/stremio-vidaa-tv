@@ -940,15 +940,9 @@
                 if (!playerFixStyle) {
                     playerFixStyle = document.createElement('style');
                     playerFixStyle.id = 'vidaa-player-fit';
-                    playerFixStyle.textContent = [
-                        'video { width: 100vw !important; height: 100vh !important; object-fit: contain !important; position: fixed !important; top: 0 !important; left: 0 !important; }',
-                        '#root { width: 100vw !important; height: 100vh !important; overflow: hidden !important; }',
-                        '[class*="player-"] { width: 100vw !important; height: 100vh !important; }',
-                        /* Scale down subtitles and player UI controls for 720p */
-                        '[class*="subtitle"], [class*="Subtitle"] { font-size: 65% !important; }',
-                        '[class*="control"], [class*="Control"], [class*="bar-"], [class*="Bar-"] { transform: scale(0.65) !important; transform-origin: bottom center !important; }',
-                        '[class*="info-"], [class*="title-"], [class*="next-video"] { font-size: 65% !important; }'
-                    ].join('\n');
+                    // Only remove zoom — don't force video positioning.
+                    // The player layout handles its own sizing.
+                    playerFixStyle.textContent = '';
                     document.head.appendChild(playerFixStyle);
                 }
                 console.log('[zoom] Disabled zoom + applied player fit CSS');
