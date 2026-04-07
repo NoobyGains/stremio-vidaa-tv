@@ -1015,9 +1015,9 @@
                 lsKey: ZOOM_KEY,
                 onToggle: function(enabled) {
                     if (enabled) {
-                        applyZoom();
+                        window.__applyZoom();
                     } else {
-                        removeZoom();
+                        window.__removeZoom();
                     }
                 }
             });
@@ -3321,7 +3321,7 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
     var MEM_WARN_THRESHOLD = 0.85; // 85% heap usage triggers warning
 
     function isEnabled() {
-        return localStorage.getItem(LS_KEY) !== 'false';
+        try { return localStorage.getItem(LS_KEY) === 'true'; } catch(e) { return false; }
     }
 
     function log() {
@@ -3356,17 +3356,43 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
             torrents.forEach(function(torrent) {
                 if (!torrent || !torrent.pieces) return;
                 var video = document.querySelector('video');
-                if (!video) return;
+                if (!video || !video.duration) return;
                 var played = video.played;
                 if (!played || played.length === 0) return;
-                log('Running piece deselection sweep for played ranges');
-                // Deselect piece ranges that are fully before current time
+
+                // Find the largest file (likely the video file)
+                var file = null;
+                if (torrent.files && torrent.files.length) {
+                    for (var f = 0; f < torrent.files.length; f++) {
+                        if (!file || torrent.files[f].length > file.length) {
+                            file = torrent.files[f];
+                        }
+                    }
+                }
+                if (!file) return;
+
+                var pieceLength = torrent.pieceLength;
+                if (!pieceLength) return;
+                var fileOffset = file.offset || 0;
+                var totalPieces = torrent.pieces.length;
+
+                // Estimate byte position from time position
+                var bytesPerSec = file.length / video.duration;
+
                 for (var i = 0; i < played.length; i++) {
                     var end = played.end(i);
+                    // Only deselect ranges well behind current playback (30s buffer)
                     if (end < video.currentTime - 30) {
-                        // We can't directly deselect arbitrary pieces without knowing offset,
-                        // but we flag that the torrent has been played to avoid re-downloading
-                        log('Played range detected up to', end, 's — memory may be reclaimable');
+                        var startByte = fileOffset + Math.floor(played.start(i) * bytesPerSec);
+                        var endByte = fileOffset + Math.floor(end * bytesPerSec);
+                        var startPiece = Math.floor(startByte / pieceLength);
+                        var endPiece = Math.floor(endByte / pieceLength);
+                        startPiece = Math.max(0, startPiece);
+                        endPiece = Math.min(totalPieces - 1, endPiece);
+                        if (endPiece > startPiece && torrent.deselect) {
+                            torrent.deselect(startPiece, endPiece, false);
+                            log('Deselected pieces', startPiece, '-', endPiece, '(played up to', Math.round(end), 's)');
+                        }
                     }
                 }
             });
@@ -3437,7 +3463,7 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
     var MAX_RETRIES = 3;
 
     function isEnabled() {
-        return localStorage.getItem(LS_KEY) !== 'false';
+        try { return localStorage.getItem(LS_KEY) === 'true'; } catch(e) { return false; }
     }
 
     function log() {
@@ -3492,8 +3518,13 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
                 log('Seeking forward 1 second to', seekTarget);
                 video.currentTime = seekTarget;
             } else {
-                log('Calling video.load() then play()');
-                var playPromise = video.load();
+                // Pause and re-seek to current position to trigger re-buffer
+                // Avoid video.load() — it resets the source entirely, which
+                // kills torrent streams and forces a full re-download
+                log('Pause + re-seek to trigger rebuffer');
+                var pos = video.currentTime;
+                video.pause();
+                video.currentTime = pos;
                 var p = video.play();
                 if (p && p.catch) p.catch(function(e) { log('play() rejected:', e.message); });
             }
@@ -3610,7 +3641,7 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
     var TOGGLE_KEY = 457; // Info/Display remote button
 
     function isEnabled() {
-        return localStorage.getItem(LS_KEY) !== 'false';
+        try { return localStorage.getItem(LS_KEY) === 'true'; } catch(e) { return false; }
     }
 
     function log() {
