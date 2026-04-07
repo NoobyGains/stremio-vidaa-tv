@@ -554,8 +554,8 @@
             }
         }
 
-        // Info (457) — show stream info
-        if (code === 457) {
+        // Info (457) — show stream info (only if Stream Stats overlay is not enabled)
+        if (code === 457 && localStorage.getItem('stremio_stream_stats') !== 'true') {
             var video = document.querySelector('video');
             if (!video) return;
             var info = document.getElementById('stream-info');
@@ -3579,7 +3579,6 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
     var PREFIX = '[stats]';
     var UPDATE_INTERVAL = 2000;
     var TOGGLE_KEY = 457; // Info/Display remote button
-    var TOGGLE_KEY_ALT = 403; // Red remote button (some TVs don't have Info)
 
     function isEnabled() {
         return localStorage.getItem(LS_KEY) !== 'false';
@@ -3735,7 +3734,7 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
 
     function onKeyDown(e) {
         if (!isEnabled()) return;
-        if ((e.keyCode === TOGGLE_KEY || e.keyCode === TOGGLE_KEY_ALT) && inPlayerRoute()) {
+        if (e.keyCode === TOGGLE_KEY && inPlayerRoute()) {
             statsVisible = !statsVisible;
             if (overlay) overlay.style.display = statsVisible ? 'block' : 'none';
             log('Stats overlay toggled:', statsVisible ? 'visible' : 'hidden');
