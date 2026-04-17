@@ -338,3 +338,50 @@ test.describe('720p zoom detection', () => {
     expect(is720p).toBe(false);
   });
 });
+
+test.describe('Installer flows', () => {
+  test('direct launcher install does not persist a false-confirmed localStorage flag', async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+
+    await page.addInitScript(() => {
+      window.Hisense_GetOSVersion = () => 'mock-os';
+      window.Hisense_installApp = function(appId, appName, icon1, icon2, icon3, appUrl, storeType, cb) {
+        window.__installArgs = { appId, appName, icon1, icon2, icon3, appUrl, storeType };
+        if (typeof cb === 'function') cb(0);
+      };
+    });
+
+    await page.goto('/');
+    await expect(page.locator('#install-banner')).toBeVisible({ timeout: 7000 });
+    await page.locator('#install-banner button').first().click();
+    await expect(page.locator('#install-banner span')).toContainText('Install request accepted');
+
+    const persisted = await page.evaluate(() => localStorage.getItem('stremio_installed_to_launcher'));
+    expect(persisted).toBeNull();
+
+    await context.close();
+  });
+
+  test('method 1 installer uses locally served icon assets', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__installerArgs = null;
+      window.Hisense_AddInsecureDomain = () => 0;
+      window.Hisense_installApp = function(appId, appName, icon1, icon2, icon3, appUrl, storeType, cb) {
+        window.__installerArgs = { appId, appName, icon1, icon2, icon3, appUrl, storeType };
+        if (typeof cb === 'function') cb(0);
+      };
+    });
+
+    await page.goto('/installer/');
+    await page.locator('#btnInstall').click();
+    await page.waitForFunction(() => window.__installerArgs !== null);
+
+    const args = await page.evaluate(() => window.__installerArgs);
+    expect(args).toBeTruthy();
+    expect(args.icon1).toBe('http://localhost:8080/shared/icon.png');
+    expect(args.icon2).toBe('http://localhost:8080/shared/icon.png');
+    expect(args.icon3).toBe('http://localhost:8080/shared/icon.png');
+    expect(args.appUrl).toContain('https://noobygains.github.io/stremio-vidaa-tv/');
+  });
+});

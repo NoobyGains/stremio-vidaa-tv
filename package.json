@@ -4,7 +4,7 @@
   "description": "<p align=\"center\">\r   <img src=\"logo.png\" alt=\"Stremio\" width=\"120\" />\r </p>",
   "main": "main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "playwright test"
   },
   "repository": {
     "type": "git",

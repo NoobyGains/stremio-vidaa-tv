@@ -34,7 +34,7 @@ That's it. No streaming server needed for most users. If you use Real-Debrid wit
 
 ## Installation
 
-### Method 1: One-Click Installer (recommended)
+### Method 1: One-Click Installer
 
 Requires a PC on the same network as your TV. No Python dependencies needed beyond the standard library.
 
@@ -50,7 +50,8 @@ Requires a PC on the same network as your TV. No Python dependencies needed beyo
 5. Revert DNS to automatic and restart your TV
 6. Stremio appears in your app launcher permanently
 
-You only need to do this once. The installer registers your TV to receive updates automatically from GitHub Pages.
+The installer only spoofs `vidaahub.com`, forwards normal DNS requests upstream, and serves the install UI/icons locally to avoid GitHub Pages lookups during installation.
+If your TV reports success but the launcher entry does not appear after a full restart, your firmware likely blocks launcher installation. In that case use **Method 2** instead.
 
 ### Method 2: Direct URL
 
@@ -205,6 +206,7 @@ These were already in the build before the above patches:
 | Problem | Solution |
 |---|---|
 | **Installer: "Install" button does nothing** | Enable Developer Mode on your TV: Settings > System > About > press **1234** on the remote > toggle Developer Mode on. Make sure the installer script is still running on your PC. |
+| **Installer says success but no launcher app appears** | Some newer VIDAA firmwares/projectors appear to block `Hisense_installApp()` even when it returns success. Reboot fully once, then fall back to **Method 2** if nothing appears. |
 | **Can't find the browser on TV** | The Internet Browser may be hidden. Go to Home > Apps > All Apps and look for "Browser" or a globe icon. |
 | **"Server Offline" in Settings** | Your streaming server must be running on a device on the same network. Test by visiting `http://<server-ip>:11470/heartbeat` in a browser. Most Real-Debrid users don't need a server at all. |
 | **Black screen during playback** | Could be: DV content in MP4 container (use MKV sources instead), content above 4K resolution, or an unsupported codec. The app detects stalled playback and offers options. |

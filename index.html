@@ -821,7 +821,8 @@
 // Install to Launcher — first-run prompt for VIDAA devices
 (function() {
     if (!window.__VIDAA_DEVICE__) return;
-    if (localStorage.getItem('stremio_installed_to_launcher')) return;
+    var SESSION_DISMISS_KEY = 'stremio_install_banner_dismissed_session';
+    if (sessionStorage.getItem(SESSION_DISMISS_KEY)) return;
 
     // Check if install API is available
     var canInstall = false;
@@ -850,8 +851,8 @@
             try {
                 Hisense_installApp('stremio-vidaa', 'Stremio', iconUrl, iconUrl, iconUrl, appUrl, 'store', function(status) {
                     if (status === 0) {
-                        localStorage.setItem('stremio_installed_to_launcher', '1');
-                        text.textContent = 'Installed! Restart your TV to see Stremio in the launcher.';
+                        sessionStorage.setItem(SESSION_DISMISS_KEY, '1');
+                        text.textContent = 'Install request accepted. Restart your TV. If Stremio does not appear, revisit this page and try again.';
                         btn.style.display = 'none';
                         setTimeout(function() { banner.remove(); }, 8000);
                     } else {
@@ -868,7 +869,10 @@
         var dismiss = document.createElement('button');
         dismiss.textContent = '\u00D7';
         dismiss.style.cssText = 'background:none;color:rgba(255,255,255,0.6);border:none;font-size:1.4rem;cursor:pointer;padding:0 4px;';
-        dismiss.onclick = function() { banner.remove(); };
+        dismiss.onclick = function() {
+            sessionStorage.setItem(SESSION_DISMISS_KEY, '1');
+            banner.remove();
+        };
         banner.appendChild(dismiss);
 
         document.body.appendChild(banner);

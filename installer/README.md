@@ -1,6 +1,6 @@
 # Stremio VIDAA Installer
 
-One-click installer for Stremio on Hisense VIDAA TVs. Works by spoofing DNS so the TV thinks it is loading `vidaahub.com`, which gives access to the Hisense app-installation APIs.
+One-click installer for Stremio on Hisense VIDAA TVs. It spoofs only `vidaahub.com`, forwards all other DNS lookups upstream, and serves the installer UI plus icon assets locally so the TV can still reach GitHub Pages during install.
 
 ## Requirements
 
@@ -37,9 +37,9 @@ Step 5: Revert DNS to automatic and restart TV
 
 ## What Happens
 
-1. **DNS spoof** -- The server responds to all DNS queries with your local IP, so `vidaahub.com` points to your PC.
+1. **Selective DNS spoof** -- The server resolves `vidaahub.com` to your PC and forwards other domains normally, so the TV can still reach external hosts like GitHub Pages.
 2. **HTTPS server** -- Serves the installer page with a self-signed certificate. The TV browser will show a certificate warning; accept it to proceed.
-3. **Install** -- The installer page calls `Hisense_installApp()` (only available on the `vidaahub.com` domain) to register Stremio as a web app on the TV.
+3. **Install** -- The installer page calls `Hisense_installApp()` (only available on the `vidaahub.com` domain) to register Stremio as a web app on the TV. The installer UI and icon are served locally to avoid remote asset failures during this step.
 4. **Revert** -- After installation, set your TV DNS back to automatic and restart. Stremio will appear in your app list.
 
 ## Troubleshooting
@@ -50,8 +50,8 @@ Step 5: Revert DNS to automatic and restart TV
 | `OpenSSL CLI not found` | Install OpenSSL or run from Git Bash on Windows |
 | TV shows certificate error | This is expected with a self-signed cert -- accept/proceed past the warning |
 | Install button does nothing | Make sure you are on a VIDAA TV and accessed via `https://vidaahub.com` (not the raw IP) |
-| App does not appear after install | Restart the TV fully (not just sleep) |
+| App does not appear after install | Restart the TV fully (not just sleep). If the launcher entry still does not appear, your firmware may block `Hisense_installApp()` even when it reports success; use the direct browser method instead. |
 
 ## Security Note
 
-This server spoofs **all** DNS queries to your local IP while running. Only run it for the few minutes needed to install, then shut it down and revert your TV's DNS to automatic.
+This server handles DNS for the TV while it is configured as the TV's resolver. Only run it for the few minutes needed to install, then shut it down and revert your TV's DNS to automatic.

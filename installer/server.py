@@ -22,6 +22,8 @@ import tempfile
 import os
 import sys
 import signal
+import mimetypes
+import urllib.parse
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -31,6 +33,8 @@ SPOOF_DOMAIN = "vidaahub.com"
 DNS_PORT = 53
 HTTPS_PORT = 443
 INSTALLER_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(INSTALLER_DIR)
+UPSTREAM_DNS_SERVERS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
 
 # ---------------------------------------------------------------------------
 # Utility: detect local IP
@@ -85,8 +89,30 @@ def generate_self_signed_cert(cert_path, key_path):
 # DNS server (UDP, port 53)
 # ---------------------------------------------------------------------------
 
+def parse_dns_question(data):
+    """Return the first DNS question as (domain, qtype) or (None, None)."""
+    if len(data) < 12:
+        return None, None
+
+    try:
+        labels = []
+        offset = 12
+        while offset < len(data):
+            length = data[offset]
+            if length == 0:
+                offset += 1
+                break
+            offset += 1
+            labels.append(data[offset:offset + length].decode("ascii", errors="replace"))
+            offset += length
+        qtype = struct.unpack("!H", data[offset:offset + 2])[0]
+        return ".".join(labels).lower(), qtype
+    except Exception:
+        return None, None
+
+
 def build_dns_response(data, spoof_ip):
-    """Build a minimal DNS response spoofing all A-record queries to spoof_ip."""
+    """Build a minimal DNS response spoofing an A-record query to spoof_ip."""
     if len(data) < 12:
         return None
 
@@ -136,8 +162,48 @@ def build_dns_response(data, spoof_ip):
     return tid + flags + counts + question + answers
 
 
+def build_empty_dns_response(data):
+    """Build a NOERROR response with zero answers."""
+    if len(data) < 12:
+        return None
+
+    tid = data[:2]
+    flags = b"\x81\x80"
+    qd_count = struct.unpack("!H", data[4:6])[0]
+    counts = struct.pack("!HH", qd_count, 0) + b"\x00\x00\x00\x00"
+
+    offset = 12
+    for _ in range(qd_count):
+        while offset < len(data):
+            length = data[offset]
+            if length == 0:
+                offset += 1
+                break
+            offset += 1 + length
+        offset += 4
+
+    question = data[12:offset]
+    return tid + flags + counts + question
+
+
+def forward_dns_query(data):
+    """Forward a DNS query upstream and return the raw response."""
+    for host, port in UPSTREAM_DNS_SERVERS:
+        upstream = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        upstream.settimeout(2.0)
+        try:
+            upstream.sendto(data, (host, port))
+            response, _ = upstream.recvfrom(4096)
+            return response
+        except Exception:
+            continue
+        finally:
+            upstream.close()
+    return None
+
+
 def dns_server(local_ip):
-    """Run a UDP DNS server that spoofs SPOOF_DOMAIN to local_ip."""
+    """Run a UDP DNS server that spoofs only vidaahub.com and forwards the rest."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
@@ -155,23 +221,28 @@ def dns_server(local_ip):
     while True:
         try:
             data, addr = sock.recvfrom(512)
-            response = build_dns_response(data, local_ip)
+            domain, qtype = parse_dns_question(data)
+            response = None
+
+            if domain == SPOOF_DOMAIN and qtype == 1:
+                response = build_dns_response(data, local_ip)
+                if response:
+                    sock.sendto(response, addr)
+                    print("[DNS]   " + addr[0] + " queried " + domain + " -> " + local_ip + " (spoofed)")
+                continue
+
+            if domain == SPOOF_DOMAIN and qtype == 28:
+                response = build_empty_dns_response(data)
+                if response:
+                    sock.sendto(response, addr)
+                    print("[DNS]   " + addr[0] + " queried " + domain + " AAAA -> empty")
+                continue
+
+            response = forward_dns_query(data)
             if response:
                 sock.sendto(response, addr)
-                # Extract queried domain for logging
-                try:
-                    labels = []
-                    i = 12
-                    while i < len(data):
-                        length = data[i]
-                        if length == 0:
-                            break
-                        labels.append(data[i + 1:i + 1 + length].decode("ascii", errors="replace"))
-                        i += 1 + length
-                    domain = ".".join(labels)
-                    print("[DNS]   " + addr[0] + " queried " + domain + " -> " + local_ip)
-                except Exception:
-                    pass
+                if domain:
+                    print("[DNS]   " + addr[0] + " queried " + domain + " (forwarded)")
         except Exception:
             pass
 
@@ -180,13 +251,44 @@ def dns_server(local_ip):
 # ---------------------------------------------------------------------------
 
 class InstallerHandler(http.server.SimpleHTTPRequestHandler):
-    """Serves files from the installer directory."""
+    """Serve the installer UI plus a small set of shared assets from the repo root."""
+
+    SHARED_FILES = {
+        "icon.png": os.path.join(REPO_ROOT, "icon.png"),
+        "logo.png": os.path.join(REPO_ROOT, "logo.png"),
+        "PlusJakartaSans.ttf": os.path.join(REPO_ROOT, "PlusJakartaSans.ttf"),
+    }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=INSTALLER_DIR, **kwargs)
 
     def log_message(self, format, *args):
         print("[HTTPS] " + self.client_address[0] + " " + (format % args))
+
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        if path in ("/", "/index.html"):
+            return super().do_GET()
+
+        if path.startswith("/shared/"):
+            filename = path.split("/", 2)[-1]
+            file_path = self.SHARED_FILES.get(filename)
+            if not file_path or not os.path.exists(file_path):
+                self.send_error(404, "File not found")
+                return
+
+            mime_type, _ = mimetypes.guess_type(file_path)
+            self.send_response(200)
+            self.send_header("Content-Type", mime_type or "application/octet-stream")
+            self.send_header("Content-Length", str(os.path.getsize(file_path)))
+            self.end_headers()
+            with open(file_path, "rb") as handle:
+                self.wfile.write(handle.read())
+            return
+
+        self.send_error(404, "File not found")
 
     def end_headers(self):
         # Prevent caching
@@ -233,6 +335,8 @@ def main():
     print("[INIT]  Generating self-signed SSL certificate...")
     generate_self_signed_cert(cert_path, key_path)
     print("[INIT]  Certificate ready")
+    print("")
+    print("[INIT]  Spoofing only " + SPOOF_DOMAIN + " and forwarding all other DNS queries upstream")
     print("")
 
     # Start DNS server in a background thread

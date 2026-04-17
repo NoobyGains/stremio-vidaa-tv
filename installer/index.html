@@ -9,7 +9,7 @@
 <style>
   @font-face {
     font-family: 'PlusJakartaSans';
-    src: url('https://noobygains.github.io/stremio-vidaa-tv/PlusJakartaSans.ttf') format('truetype');
+    src: url('/shared/PlusJakartaSans.ttf') format('truetype');
     font-weight: normal;
     font-style: normal;
   }
@@ -246,7 +246,7 @@
 <body>
 
 <div class="container">
-  <img class="logo" src="https://noobygains.github.io/stremio-vidaa-tv/logo.png" alt="Stremio">
+  <img class="logo" src="/shared/logo.png" alt="Stremio">
   <h1>Stremio for VIDAA</h1>
   <p class="subtitle">One-click installer</p>
 
@@ -287,8 +287,9 @@
 
   var APP_ID      = "stremio-vidaa";
   var APP_NAME    = "Stremio";
-  var ICON_URL    = "https://noobygains.github.io/stremio-vidaa-tv/icon.png";
-  var APP_URL     = "https://noobygains.github.io/stremio-vidaa-tv/";
+  var INSTALL_ORIGIN = window.location.origin;
+  var ICON_URL    = INSTALL_ORIGIN + "/shared/icon.png";
+  var APP_URL     = "https://noobygains.github.io/stremio-vidaa-tv/?install_source=method1";
   var STORE_TYPE  = "store";
   var GH_DOMAIN   = "noobygains.github.io";
 
@@ -401,7 +402,7 @@
           function(result) {
             showProgress(100);
             if (result === 0) {
-              setStatus("Stremio installed successfully! Restart your TV to see it.", "success");
+              setStatus("Install request accepted. Restart your TV. If Stremio does not appear, reopen this page or try Method 2.", "success");
             } else {
               setStatus("Install callback returned code: " + result, "error");
             }
