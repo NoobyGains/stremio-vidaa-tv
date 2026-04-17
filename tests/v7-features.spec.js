@@ -545,7 +545,7 @@ test.describe('Diagnostics', () => {
     await page.evaluate(() => window.__showVidaaDiagnostics());
     await expect(page.locator('#vidaa-diagnostics-modal')).toBeVisible();
     const blob = await page.locator('#vidaa-diagnostics-modal textarea').inputValue();
-    expect(blob).toContain('"build": "ff086d7"');
+    expect(blob).toContain('"build": "');
     expect(blob).toContain('"vidaaDetected": true');
   });
 
@@ -565,7 +565,7 @@ test.describe('Diagnostics', () => {
 
     await page.evaluate(() => {
       window.__resetVidaaTweaks();
-      document.querySelector('#vidaa-reset-tweaks-modal button:last-child').click();
+      document.querySelector('#vidaa-reset-tweaks-apply-btn').click();
     });
     await page.waitForLoadState('load');
     await page.waitForTimeout(250);
@@ -579,5 +579,107 @@ test.describe('Diagnostics', () => {
     expect(storageState.serverUrl).toBe('http://10.0.0.7:11470');
     expect(storageState.mode).toBeNull();
     expect(storageState.streamStats).toBeNull();
+  });
+
+  test('playback diagnostics modal captures video and stream info', async ({ page }) => {
+    await page.goto('/#/player/test-stream');
+    await page.evaluate(() => {
+      window.__STREAM_INFO__ = {
+        videoCodec: 'h264',
+        width: 1920,
+        height: 1080,
+        title: 'Test Stream'
+      };
+      window.__VIDAA_STATE__ = { hdr: 'HDR10', videoCodec: 'h264' };
+      window.core = {
+        getState: async () => ({
+          paused: false,
+          buffering: false,
+          duration: 120,
+          selectedSubtitleTrack: { id: 'sub-en', lang: 'eng' },
+          selectedAudioTrack: { id: 'audio-main', lang: 'eng' },
+          stream: { url: 'https://cdn.example.com/stream.m3u8' }
+        })
+      };
+
+      const video = document.createElement('video');
+      Object.defineProperty(video, 'currentSrc', { configurable: true, get: () => 'https://cdn.example.com/stream.m3u8' });
+      Object.defineProperty(video, 'readyState', { configurable: true, get: () => 4 });
+      Object.defineProperty(video, 'networkState', { configurable: true, get: () => 1 });
+      Object.defineProperty(video, 'paused', { configurable: true, get: () => false });
+      Object.defineProperty(video, 'muted', { configurable: true, get: () => false });
+      Object.defineProperty(video, 'volume', { configurable: true, get: () => 0.75 });
+      Object.defineProperty(video, 'playbackRate', { configurable: true, get: () => 1 });
+      Object.defineProperty(video, 'currentTime', { configurable: true, get: () => 12 });
+      Object.defineProperty(video, 'duration', { configurable: true, get: () => 120 });
+      Object.defineProperty(video, 'videoWidth', { configurable: true, get: () => 1920 });
+      Object.defineProperty(video, 'videoHeight', { configurable: true, get: () => 1080 });
+      Object.defineProperty(video, 'buffered', {
+        configurable: true,
+        get: () => ({
+          length: 1,
+          end: () => 42
+        })
+      });
+      video.getVideoPlaybackQuality = () => ({
+        droppedVideoFrames: 3,
+        totalVideoFrames: 100,
+        corruptedVideoFrames: 0,
+        creationTime: 1
+      });
+      document.body.appendChild(video);
+    });
+
+    await page.evaluate(() => window.__showPlaybackDiagnostics());
+    await expect(page.locator('#vidaa-playback-diagnostics-modal')).toBeVisible();
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#vidaa-playback-diagnostics-modal textarea');
+      return el && el.value.indexOf('"currentSrcHost": "cdn.example.com"') !== -1;
+    });
+    const blob = await page.locator('#vidaa-playback-diagnostics-modal textarea').inputValue();
+    expect(blob).toContain('"videoCodec": "h264"');
+    expect(blob).toContain('"selectedSubtitleTrackId": "sub-en"');
+    expect(blob).toContain('"currentSrcHost": "cdn.example.com"');
+  });
+
+  test('safe playback mode applies conservative defaults and reloads', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.setItem('stremio_720p_mode', 'ui-and-player');
+      localStorage.setItem('stremio_force_stereo', 'true');
+      localStorage.setItem('stremio_audio_delay_enabled', 'true');
+      localStorage.setItem('stremio_sub_drift_fix', 'true');
+      localStorage.setItem('stremio_webtorrent_enabled', 'true');
+      localStorage.setItem('stremio_stream_stats', 'true');
+      localStorage.setItem('stremio_low_memory', 'false');
+      localStorage.setItem('stremio_auto_rebuffer', 'false');
+      localStorage.setItem('stremio_playback_warning', 'false');
+      window.__applyPlaybackSafeMode();
+      document.querySelector('#vidaa-safe-mode-apply-btn').click();
+    });
+    await page.waitForLoadState('load');
+    await page.waitForTimeout(250);
+
+    const state = await page.evaluate(() => ({
+      mode: localStorage.getItem('stremio_720p_mode'),
+      forceStereo: localStorage.getItem('stremio_force_stereo'),
+      audioDelay: localStorage.getItem('stremio_audio_delay_enabled'),
+      subDrift: localStorage.getItem('stremio_sub_drift_fix'),
+      webtorrent: localStorage.getItem('stremio_webtorrent_enabled'),
+      streamStats: localStorage.getItem('stremio_stream_stats'),
+      lowMemory: localStorage.getItem('stremio_low_memory'),
+      autoRebuffer: localStorage.getItem('stremio_auto_rebuffer'),
+      playbackWarning: localStorage.getItem('stremio_playback_warning')
+    }));
+
+    expect(state.mode).toBe('auto');
+    expect(state.forceStereo).toBe('false');
+    expect(state.audioDelay).toBe('false');
+    expect(state.subDrift).toBe('false');
+    expect(state.webtorrent).toBe('false');
+    expect(state.streamStats).toBe('false');
+    expect(state.lowMemory).toBe('true');
+    expect(state.autoRebuffer).toBe('true');
+    expect(state.playbackWarning).toBe('true');
   });
 });

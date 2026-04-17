@@ -113,7 +113,7 @@
     <div id="patch-version" style="position:fixed;bottom:4px;right:8px;color:rgba(255,255,255,0.3);font-size:10px;z-index:99999;pointer-events:none;">v7</div>
 </body>
 <script>
-    window.__BUILD_COMMIT__ = 'ff086d7';
+    window.__BUILD_COMMIT__ = 'b5e0f7d';
     // Register service worker with auto-update
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js').then(function(reg) {
@@ -961,6 +961,107 @@
         if (existing) existing.remove();
     }
 
+    function closeModalById(id) {
+        var existing = document.getElementById(id);
+        if (existing) existing.remove();
+    }
+
+    function createVidaaActionButton(label, opts) {
+        opts = opts || {};
+        var button = document.createElement('button');
+        if (opts.id) button.id = opts.id;
+        button.type = 'button';
+        button.textContent = label;
+        button.style.cssText = (
+            opts.primary
+                ? 'background:#7b5bf5;color:#fff;border:none;'
+                : opts.danger
+                    ? 'background:#d34d4d;color:#fff;border:none;'
+                    : opts.success
+                        ? 'background:#2d8f5f;color:#fff;border:none;'
+                        : 'background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.14);'
+        ) + 'border-radius:10px;padding:10px 16px;font-family:PlusJakartaSans,sans-serif;font-weight:700;cursor:pointer;';
+        return button;
+    }
+
+    function createVidaaModal(config) {
+        closeModalById(config.id);
+
+        var modal = document.createElement('div');
+        modal.id = config.id;
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:100002;display:flex;align-items:center;justify-content:center;padding:24px;';
+
+        var panel = document.createElement('div');
+        panel.style.cssText = 'width:min(' + (config.width || '920px') + ', 92vw);' +
+            (config.maxHeight ? 'max-height:' + config.maxHeight + ';' : '') +
+            'background:#12121a;border:1px solid rgba(255,255,255,0.12);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,0.55);display:flex;flex-direction:column;padding:20px;gap:14px;';
+
+        var header = document.createElement('div');
+        header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;';
+        header.innerHTML = '<div style="font-family:PlusJakartaSans,sans-serif;font-size:1.3rem;font-weight:700;color:#fff;">' + config.title + '</div>';
+
+        var actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;gap:10px;align-items:center;';
+
+        var closeBtn = createVidaaActionButton(config.closeLabel || 'Close');
+        closeBtn.onclick = function() {
+            closeModalById(config.id);
+            if (config.onClose) config.onClose();
+        };
+        actions.appendChild(closeBtn);
+
+        if (config.headerButtons && config.headerButtons.length) {
+            for (var i = 0; i < config.headerButtons.length; i++) {
+                actions.insertBefore(config.headerButtons[i], closeBtn);
+            }
+        }
+        header.appendChild(actions);
+
+        panel.appendChild(header);
+
+        if (config.helpText) {
+            var help = document.createElement('div');
+            help.style.cssText = 'font-family:PlusJakartaSans,sans-serif;font-size:0.95rem;line-height:1.5;color:rgba(255,255,255,0.7);';
+            help.textContent = config.helpText;
+            panel.appendChild(help);
+        }
+
+        var body = document.createElement('div');
+        body.style.cssText = config.bodyStyle || '';
+        panel.appendChild(body);
+
+        if (config.footerButtons && config.footerButtons.length) {
+            var footer = document.createElement('div');
+            footer.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
+            for (var j = 0; j < config.footerButtons.length; j++) footer.appendChild(config.footerButtons[j]);
+            panel.appendChild(footer);
+        }
+
+        modal.appendChild(panel);
+        modal.onclick = function(e) {
+            if (e.target === modal) {
+                closeModalById(config.id);
+                if (config.onClose) config.onClose();
+            }
+        };
+        document.body.appendChild(modal);
+
+        return {
+            modal: modal,
+            panel: panel,
+            body: body,
+            closeBtn: closeBtn,
+            close: function() {
+                closeModalById(config.id);
+                if (config.onClose) config.onClose();
+            }
+        };
+    }
+
+    window.__closeVidaaModalById = closeModalById;
+    window.__createVidaaActionButton = createVidaaActionButton;
+    window.__createVidaaModal = createVidaaModal;
+
     function copyBlob(textarea) {
         var text = textarea.value;
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -977,39 +1078,127 @@
         textarea.select();
     }
 
+    function playbackTrackedSettings() {
+        var trackedKeys = [
+            'stremio_720p_mode',
+            'stremio_force_stereo',
+            'stremio_audio_delay_enabled',
+            'stremio_sub_drift_fix',
+            'stremio_webtorrent_enabled',
+            'stremio_low_memory',
+            'stremio_auto_rebuffer',
+            'stremio_stream_stats',
+            'stremio_playback_warning'
+        ];
+        var settings = {};
+        for (var i = 0; i < trackedKeys.length; i++) {
+            settings[trackedKeys[i]] = safeRead(function(key) {
+                return localStorage.getItem(key);
+            }.bind(null, trackedKeys[i]), null);
+        }
+        return settings;
+    }
+
+    function collectPlaybackDiagnostics() {
+        var video = document.querySelector('video');
+        var bufferedSec = null;
+        try {
+            if (video && video.buffered && video.buffered.length) {
+                bufferedSec = video.buffered.end(video.buffered.length - 1) - video.currentTime;
+            }
+        } catch (e) {}
+
+        var quality = null;
+        try {
+            if (video && typeof video.getVideoPlaybackQuality === 'function') {
+                quality = video.getVideoPlaybackQuality();
+            }
+        } catch (e) {}
+
+        var diag = {
+            build: window.__BUILD_COMMIT__ || null,
+            patchVersion: window.__STREMIO_PATCH_VERSION__ || null,
+            timestamp: new Date().toISOString(),
+            href: window.location.href,
+            hash: window.location.hash,
+            playerRoute: (window.location.hash || '').indexOf('#/player/') === 0,
+            playbackSettings: playbackTrackedSettings(),
+            streamInfo: window.__STREAM_INFO__ || null,
+            vidaaCaps: window.__VIDAA_CAPS__ || null,
+            vidaaState: window.__VIDAA_STATE__ || null,
+            video: video ? {
+                currentSrc: video.currentSrc || video.src || null,
+                currentSrcHost: safeRead(function() { return new URL(video.currentSrc || video.src).host; }, null),
+                readyState: video.readyState,
+                networkState: video.networkState,
+                paused: video.paused,
+                muted: video.muted,
+                volume: video.volume,
+                playbackRate: video.playbackRate,
+                currentTime: video.currentTime,
+                duration: video.duration,
+                bufferedSec: bufferedSec,
+                videoWidth: video.videoWidth,
+                videoHeight: video.videoHeight,
+                error: video.error ? {
+                    code: video.error.code,
+                    message: video.error.message || null
+                } : null,
+                playbackQuality: quality ? {
+                    droppedVideoFrames: quality.droppedVideoFrames,
+                    totalVideoFrames: quality.totalVideoFrames,
+                    corruptedVideoFrames: quality.corruptedVideoFrames,
+                    creationTime: quality.creationTime
+                } : null
+            } : null,
+            playerState: null
+        };
+
+        return Promise.resolve().then(function() {
+            if (!window.core || typeof window.core.getState !== 'function') return diag;
+            return window.core.getState('player').then(function(state) {
+                if (!state) return diag;
+                diag.playerState = {
+                    paused: safeRead(function() { return state.paused; }, null),
+                    loaded: safeRead(function() { return state.loaded; }, null),
+                    buffering: safeRead(function() { return state.buffering; }, null),
+                    time: safeRead(function() { return state.time; }, null),
+                    duration: safeRead(function() { return state.duration; }, null),
+                    selectedSubtitleTrackId: safeRead(function() { return state.selectedSubtitleTrack && state.selectedSubtitleTrack.id; }, null),
+                    selectedSubtitleTrack: safeRead(function() { return state.selectedSubtitleTrack; }, null),
+                    selectedAudioTrackId: safeRead(function() { return state.selectedAudioTrack && state.selectedAudioTrack.id; }, null),
+                    selectedAudioTrack: safeRead(function() { return state.selectedAudioTrack; }, null),
+                    stream: safeRead(function() { return state.stream; }, null)
+                };
+                return diag;
+            }).catch(function(err) {
+                diag.playerState = { error: err && err.message ? err.message : 'getState failed' };
+                return diag;
+            });
+        });
+    }
+
+    function closePlaybackDiagnosticsModal() {
+        var existing = document.getElementById('vidaa-playback-diagnostics-modal');
+        if (existing) existing.remove();
+    }
+
+    function closeSafeModeModal() {
+        var existing = document.getElementById('vidaa-safe-mode-modal');
+        if (existing) existing.remove();
+    }
+
     window.__showVidaaDiagnostics = function() {
         closeDiagnosticsModal();
-
-        var modal = document.createElement('div');
-        modal.id = 'vidaa-diagnostics-modal';
-        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:100002;display:flex;align-items:center;justify-content:center;padding:24px;';
-
-        var panel = document.createElement('div');
-        panel.style.cssText = 'width:min(920px, 92vw);max-height:88vh;background:#12121a;border:1px solid rgba(255,255,255,0.12);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,0.55);display:flex;flex-direction:column;padding:20px;gap:14px;';
-
-        var header = document.createElement('div');
-        header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;';
-        header.innerHTML = '<div style="font-family:PlusJakartaSans,sans-serif;font-size:1.3rem;font-weight:700;color:#fff;">VIDAA Diagnostics</div>';
-
-        var actions = document.createElement('div');
-        actions.style.cssText = 'display:flex;gap:10px;align-items:center;';
-
-        var copyBtn = document.createElement('button');
-        copyBtn.id = 'vidaa-diag-copy-btn';
-        copyBtn.textContent = 'Copy Debug Blob';
-        copyBtn.style.cssText = 'background:#7b5bf5;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-family:PlusJakartaSans,sans-serif;font-weight:700;cursor:pointer;';
-
-        var closeBtn = document.createElement('button');
-        closeBtn.textContent = 'Close';
-        closeBtn.style.cssText = 'background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px 16px;font-family:PlusJakartaSans,sans-serif;font-weight:700;cursor:pointer;';
-
-        actions.appendChild(copyBtn);
-        actions.appendChild(closeBtn);
-        header.appendChild(actions);
-
-        var help = document.createElement('div');
-        help.style.cssText = 'font-family:PlusJakartaSans,sans-serif;font-size:0.95rem;line-height:1.5;color:rgba(255,255,255,0.7);';
-        help.textContent = 'Paste this into a GitHub issue if install, zoom, or playback behavior looks wrong on your VIDAA device.';
+        var copyBtn = createVidaaActionButton('Copy Debug Blob', { id: 'vidaa-diag-copy-btn', primary: true });
+        var modalApi = createVidaaModal({
+            id: 'vidaa-diagnostics-modal',
+            title: 'VIDAA Diagnostics',
+            width: '920px',
+            maxHeight: '88vh',
+            helpText: 'Paste this into a GitHub issue if install, zoom, or playback behavior looks wrong on your VIDAA device.',
+            headerButtons: [copyBtn]
+        });
 
         var textarea = document.createElement('textarea');
         textarea.readOnly = true;
@@ -1017,16 +1206,73 @@
         textarea.value = JSON.stringify(collectDiagnostics(), null, 2);
 
         copyBtn.onclick = function() { copyBlob(textarea); };
-        closeBtn.onclick = closeDiagnosticsModal;
-        modal.onclick = function(e) { if (e.target === modal) closeDiagnosticsModal(); };
-
-        panel.appendChild(header);
-        panel.appendChild(help);
-        panel.appendChild(textarea);
-        modal.appendChild(panel);
-        document.body.appendChild(modal);
+        modalApi.body.appendChild(textarea);
         textarea.focus();
         textarea.select();
+    };
+
+    window.__showPlaybackDiagnostics = function() {
+        closePlaybackDiagnosticsModal();
+        var copyBtn = createVidaaActionButton('Copy Playback Blob', { id: 'vidaa-playback-diag-copy-btn', primary: true });
+        var modalApi = createVidaaModal({
+            id: 'vidaa-playback-diagnostics-modal',
+            title: 'Playback Diagnostics',
+            width: '920px',
+            maxHeight: '88vh',
+            helpText: 'Use this when playback, buffering, subtitles, or aspect ratio are wrong. It captures the current video element, stream metadata, and saved playback settings.',
+            headerButtons: [copyBtn]
+        });
+
+        var textarea = document.createElement('textarea');
+        textarea.readOnly = true;
+        textarea.style.cssText = 'width:100%;min-height:360px;max-height:60vh;resize:vertical;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.26);color:#dfe2ff;padding:16px;font-family:Consolas,\"Courier New\",monospace;font-size:13px;line-height:1.45;';
+        textarea.value = '{"status":"collecting"}';
+
+        copyBtn.onclick = function() { copyBlob(textarea); };
+        modalApi.body.appendChild(textarea);
+
+        collectPlaybackDiagnostics().then(function(diag) {
+            textarea.value = JSON.stringify(diag, null, 2);
+        }).catch(function(err) {
+            textarea.value = JSON.stringify({
+                error: err && err.message ? err.message : 'failed to collect playback diagnostics'
+            }, null, 2);
+        });
+
+        textarea.focus();
+        textarea.select();
+    };
+
+    window.__applyPlaybackSafeMode = function() {
+        closeSafeModeModal();
+        var cancelBtn = createVidaaActionButton('Cancel', { id: 'vidaa-safe-mode-cancel-btn' });
+        var applyBtn = createVidaaActionButton('Apply and Reload', { id: 'vidaa-safe-mode-apply-btn', success: true });
+        var modalApi = createVidaaModal({
+            id: 'vidaa-safe-mode-modal',
+            title: 'Apply Safe Playback Mode',
+            width: '760px',
+            footerButtons: [cancelBtn, applyBtn]
+        });
+
+        modalApi.body.innerHTML = '<div style="font-family:PlusJakartaSans,sans-serif;font-size:0.95rem;line-height:1.55;color:rgba(255,255,255,0.74);">This keeps the stable playback safeguards on and turns off the riskiest optional tweaks, then reloads the app.</div>' +
+            '<div style="font-family:PlusJakartaSans,sans-serif;font-size:0.9rem;line-height:1.5;color:rgba(255,255,255,0.6);">It sets 720p mode back to Auto, disables force stereo, audio-delay override, subtitle drift fixes, WebTorrent, and stream stats, while enabling low-memory mode, auto-rebuffer, and playback warnings.</div>';
+
+        cancelBtn.onclick = closeSafeModeModal;
+        applyBtn.onclick = function() {
+            try {
+                localStorage.setItem('stremio_720p_mode', 'auto');
+                localStorage.setItem('stremio_force_stereo', 'false');
+                localStorage.setItem('stremio_audio_delay_enabled', 'false');
+                localStorage.setItem('stremio_sub_drift_fix', 'false');
+                localStorage.setItem('stremio_webtorrent_enabled', 'false');
+                localStorage.setItem('stremio_stream_stats', 'false');
+                localStorage.setItem('stremio_low_memory', 'true');
+                localStorage.setItem('stremio_auto_rebuffer', 'true');
+                localStorage.setItem('stremio_playback_warning', 'true');
+            } catch (e) {}
+            location.reload();
+        };
+        applyBtn.focus();
     };
 
     var regInterval = setInterval(function() {
@@ -1259,29 +1505,12 @@
         };
 
         window.__show720pModePicker = function() {
-            removeModal('vidaa-720p-mode-modal');
-
-            var modal = document.createElement('div');
-            modal.id = 'vidaa-720p-mode-modal';
-            modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:100002;display:flex;align-items:center;justify-content:center;padding:24px;';
-
-            var panel = document.createElement('div');
-            panel.style.cssText = 'width:min(760px, 92vw);background:#12121a;border:1px solid rgba(255,255,255,0.12);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,0.55);display:flex;flex-direction:column;padding:20px;gap:14px;';
-
-            var header = document.createElement('div');
-            header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;';
-            header.innerHTML = '<div style="font-family:PlusJakartaSans,sans-serif;font-size:1.3rem;font-weight:700;color:#fff;">720p Mode</div>';
-
-            var closeBtn = document.createElement('button');
-            closeBtn.textContent = 'Close';
-            closeBtn.style.cssText = 'background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px 16px;font-family:PlusJakartaSans,sans-serif;font-weight:700;cursor:pointer;';
-            closeBtn.onclick = function() { removeModal('vidaa-720p-mode-modal'); };
-            header.appendChild(closeBtn);
-
-            var help = document.createElement('div');
-            help.style.cssText = 'font-family:PlusJakartaSans,sans-serif;font-size:0.95rem;line-height:1.5;color:rgba(255,255,255,0.7);';
-            help.textContent = 'Use Auto for normal VIDAA projectors. Choose UI Only if 720p detection misses your device. Only use UI + Player if you specifically want the old player zoom behavior back.';
-
+            var modalApi = window.__createVidaaModal({
+                id: 'vidaa-720p-mode-modal',
+                title: '720p Mode',
+                width: '760px',
+                helpText: 'Use Auto for normal VIDAA projectors. Choose UI Only if 720p detection misses your device. Only use UI + Player if you specifically want the old player zoom behavior back.'
+            });
             var current = document.createElement('div');
             current.id = 'vidaa-720p-mode-active';
             current.style.cssText = 'font-family:PlusJakartaSans,sans-serif;font-size:0.98rem;font-weight:700;color:#dfe2ff;';
@@ -1313,40 +1542,23 @@
             });
 
             updateModeButtons(buttons);
-
-            panel.appendChild(header);
-            panel.appendChild(help);
-            panel.appendChild(current);
-            panel.appendChild(list);
-            modal.appendChild(panel);
-            modal.onclick = function(e) { if (e.target === modal) removeModal('vidaa-720p-mode-modal'); };
-            document.body.appendChild(modal);
-            focusFallback([buttons[get720pMode()], closeBtn]);
+            modalApi.body.appendChild(current);
+            modalApi.body.appendChild(list);
+            focusFallback([buttons[get720pMode()], modalApi.closeBtn]);
         };
 
         window.__resetVidaaTweaks = function() {
-            removeModal('vidaa-reset-tweaks-modal');
+            var cancelBtn = window.__createVidaaActionButton('Cancel', { id: 'vidaa-reset-tweaks-cancel-btn' });
+            var resetBtn = window.__createVidaaActionButton('Reset and Reload', { id: 'vidaa-reset-tweaks-apply-btn', danger: true });
+            var modalApi = window.__createVidaaModal({
+                id: 'vidaa-reset-tweaks-modal',
+                title: 'Reset VIDAA Tweaks',
+                width: '720px',
+                footerButtons: [cancelBtn, resetBtn]
+            });
 
-            var modal = document.createElement('div');
-            modal.id = 'vidaa-reset-tweaks-modal';
-            modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:100002;display:flex;align-items:center;justify-content:center;padding:24px;';
-
-            var panel = document.createElement('div');
-            panel.style.cssText = 'width:min(720px, 92vw);background:#12121a;border:1px solid rgba(255,255,255,0.12);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,0.55);display:flex;flex-direction:column;padding:20px;gap:14px;';
-            panel.innerHTML = '<div style="font-family:PlusJakartaSans,sans-serif;font-size:1.3rem;font-weight:700;color:#fff;">Reset VIDAA Tweaks</div>' +
-                '<div style="font-family:PlusJakartaSans,sans-serif;font-size:0.95rem;line-height:1.55;color:rgba(255,255,255,0.74);">This clears this fork\'s saved tweak settings and reloads the app. Server URL is kept.</div>' +
+            modalApi.body.innerHTML = '<div style="font-family:PlusJakartaSans,sans-serif;font-size:0.95rem;line-height:1.55;color:rgba(255,255,255,0.74);">This clears this fork\'s saved tweak settings and reloads the app. Server URL is kept.</div>' +
                 '<div style="font-family:PlusJakartaSans,sans-serif;font-size:0.9rem;line-height:1.5;color:rgba(255,255,255,0.6);">It resets zoom mode, subtitle/audio tweaks, playback warnings, low-memory settings, stream stats, launcher prompts, and other `stremio_*` patch keys.</div>';
-
-            var actions = document.createElement('div');
-            actions.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
-
-            var cancelBtn = document.createElement('button');
-            cancelBtn.textContent = 'Cancel';
-            cancelBtn.style.cssText = 'background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px 16px;font-family:PlusJakartaSans,sans-serif;font-weight:700;cursor:pointer;';
-
-            var resetBtn = document.createElement('button');
-            resetBtn.textContent = 'Reset and Reload';
-            resetBtn.style.cssText = 'background:#d34d4d;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-family:PlusJakartaSans,sans-serif;font-weight:700;cursor:pointer;';
 
             cancelBtn.onclick = function() { removeModal('vidaa-reset-tweaks-modal'); };
             resetBtn.onclick = function() {
@@ -1361,13 +1573,6 @@
                 } catch (e) {}
                 location.reload();
             };
-
-            actions.appendChild(cancelBtn);
-            actions.appendChild(resetBtn);
-            panel.appendChild(actions);
-            modal.appendChild(panel);
-            modal.onclick = function(e) { if (e.target === modal) removeModal('vidaa-reset-tweaks-modal'); };
-            document.body.appendChild(modal);
             focusFallback([resetBtn, cancelBtn]);
         };
 

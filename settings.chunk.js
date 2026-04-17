@@ -661,6 +661,14 @@
                                 makeToggle("Stream Stats", "stremio_stream_stats", null, true),
                                 makeToggle("Playback Warning", "stremio_playback_warning", null, true),
                                 {
+                                    label: "Playback Diagnostics",
+                                    onClick: () => { if (window.__showPlaybackDiagnostics) window.__showPlaybackDiagnostics(); }
+                                },
+                                {
+                                    label: "Apply Safe Playback Mode",
+                                    onClick: () => { if (window.__applyPlaybackSafeMode) window.__applyPlaybackSafeMode(); }
+                                },
+                                {
                                     label: "Reset VIDAA Tweaks",
                                     onClick: () => { if (window.__resetVidaaTweaks) window.__resetVidaaTweaks(); }
                                 },
