@@ -649,18 +649,21 @@
                                 makeToggle("Auto-Play Stream", "stremio_autoplay_best"),
                                 makeToggle("Mark Season", "stremio_mark_season"),
                                 makeToggle("Subtitle Drift Fix", "stremio_sub_drift_fix"),
-                                makeToggle("720p Zoom", "stremio_720p_zoom", function(now) {
-                                    if (now) { if (window.__applyZoom) window.__applyZoom(); }
-                                    else { if (window.__removeZoom) window.__removeZoom(); }
-                                }),
-                                makeToggle("Disable UI Zoom in Player", "stremio_zoom_disable_in_player", function() {
-                                    if (window.__refreshZoom) window.__refreshZoom('player-toggle');
-                                }, true),
+                                {
+                                    get label() {
+                                        return window.__get720pModeLabel ? "720p Mode: " + window.__get720pModeLabel() : "720p Mode";
+                                    },
+                                    onClick: () => { if (window.__show720pModePicker) window.__show720pModePicker(); }
+                                },
                                 makeToggle("Torrent Streaming", "stremio_webtorrent_enabled"),
                                 makeToggle("Low Memory Mode", "stremio_low_memory", null, true),
                                 makeToggle("Auto-Rebuffer", "stremio_auto_rebuffer", null, true),
                                 makeToggle("Stream Stats", "stremio_stream_stats", null, true),
                                 makeToggle("Playback Warning", "stremio_playback_warning", null, true),
+                                {
+                                    label: "Reset VIDAA Tweaks",
+                                    onClick: () => { if (window.__resetVidaaTweaks) window.__resetVidaaTweaks(); }
+                                },
                                 {
                                     label: "Diagnostics",
                                     onClick: () => { if (window.__showVidaaDiagnostics) window.__showVidaaDiagnostics(); }

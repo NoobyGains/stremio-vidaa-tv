@@ -900,6 +900,7 @@
 
     function collectDiagnostics() {
         var trackedKeys = [
+            'stremio_720p_mode',
             'stremio_720p_zoom',
             'stremio_zoom_disable_in_player',
             'stremio_stream_stats',
@@ -937,6 +938,7 @@
                 screenHeight: safeRead(function() { return window.screen.height; }, null),
                 screen720p: !!window.screen720p,
                 uiZoomApplied: document.body && document.body.getAttribute('data-vidaa-ui-zoom') === 'true',
+                zoomMode: safeRead(function() { return window.__get720pMode ? window.__get720pMode() : settings.stremio_720p_mode; }, null),
                 zoomEnabled: settings.stremio_720p_zoom !== 'false',
                 playerZoomDisabled: settings.stremio_zoom_disable_in_player !== 'false',
                 playerRoute: (window.location.hash || '').indexOf('#/player/') === 0
@@ -1099,31 +1101,107 @@
 })();
 </script>
 <script>
-    // 720p Zoom Correction — original behavior preserved
-    // Auto-detects VIDAA 720p viewport and applies zoom.
-    // Toggle in Settings allows users to disable if it causes issues (e.g. aspect ratio on some TVs).
+    // 720p Zoom Correction
+    // Auto mode detects 720p VIDAA viewports and scales the UI only.
+    // Player layout stays untouched unless users explicitly opt into legacy player zoom.
     (function() {
+        var MODE_KEY = 'stremio_720p_mode';
         var ZOOM_KEY = 'stremio_720p_zoom';
         var PLAYER_ZOOM_KEY = 'stremio_zoom_disable_in_player';
         var UI_ZOOM_SCALE = '65%';
+        var VALID_MODES = {
+            'auto': true,
+            'ui-only': true,
+            'ui-and-player': true,
+            'off': true
+        };
+        var MODE_LABELS = {
+            'auto': 'Auto',
+            'ui-only': 'UI Only',
+            'ui-and-player': 'UI + Player',
+            'off': 'Off'
+        };
+        var RESET_EXCLUDE_KEYS = {
+            stremio_server_url: true
+        };
 
         function isPlayerRoute() {
             return (window.location.hash || '').indexOf('#/player/') === 0;
         }
 
-        function isZoomEnabled() {
+        function readStoredMode() {
             try {
-                return localStorage.getItem(ZOOM_KEY) !== 'false';
+                var mode = localStorage.getItem(MODE_KEY);
+                return VALID_MODES[mode] ? mode : null;
             } catch (e) {
-                return true;
+                return null;
             }
         }
 
-        function isPlayerZoomDisabled() {
+        function inferLegacyMode() {
+            var zoomEnabled = true;
+            var playerZoomDisabled = true;
             try {
-                return localStorage.getItem(PLAYER_ZOOM_KEY) !== 'false';
+                zoomEnabled = localStorage.getItem(ZOOM_KEY) !== 'false';
+                playerZoomDisabled = localStorage.getItem(PLAYER_ZOOM_KEY) !== 'false';
             } catch (e) {
-                return true;
+                zoomEnabled = true;
+                playerZoomDisabled = true;
+            }
+            if (!zoomEnabled) return 'off';
+            return playerZoomDisabled ? 'auto' : 'ui-and-player';
+        }
+
+        function getModeLabel(mode) {
+            return MODE_LABELS[mode] || MODE_LABELS.auto;
+        }
+
+        function get720pMode() {
+            return readStoredMode() || inferLegacyMode();
+        }
+
+        function syncLegacyZoomKeys(mode) {
+            try {
+                if (mode === 'off') {
+                    localStorage.setItem(ZOOM_KEY, 'false');
+                    localStorage.setItem(PLAYER_ZOOM_KEY, 'true');
+                    return;
+                }
+                localStorage.setItem(ZOOM_KEY, 'true');
+                localStorage.setItem(PLAYER_ZOOM_KEY, mode === 'ui-and-player' ? 'false' : 'true');
+            } catch (e) {}
+        }
+
+        function set720pMode(mode) {
+            if (!VALID_MODES[mode]) mode = 'auto';
+            try {
+                localStorage.setItem(MODE_KEY, mode);
+            } catch (e) {}
+            syncLegacyZoomKeys(mode);
+        }
+
+        function shouldTreatAs720pContext() {
+            var mode = get720pMode();
+            if (mode === 'off') return false;
+            if (mode === 'ui-only' || mode === 'ui-and-player') return true;
+            return !!window.screen720p;
+        }
+
+        function shouldZoomPlayerRoute() {
+            return get720pMode() === 'ui-and-player';
+        }
+
+        function removeModal(id) {
+            var existing = document.getElementById(id);
+            if (existing) existing.remove();
+        }
+
+        function focusFallback(refs) {
+            for (var i = 0; i < refs.length; i++) {
+                if (refs[i] && typeof refs[i].focus === 'function') {
+                    refs[i].focus();
+                    return;
+                }
             }
         }
 
@@ -1136,9 +1214,8 @@
         }
 
         function shouldApplyUiZoom() {
-            if (!window.screen720p) return false;
-            if (!isZoomEnabled()) return false;
-            if (isPlayerRoute() && isPlayerZoomDisabled()) return false;
+            if (!shouldTreatAs720pContext()) return false;
+            if (isPlayerRoute() && !shouldZoomPlayerRoute()) return false;
             return true;
         }
 
@@ -1148,7 +1225,26 @@
             console.log('[zoom] ' + (shouldApply ? 'Applied' : 'Removed') + ' UI zoom' + (reason ? ' (' + reason + ')' : ''));
         }
 
-        // Expose for toggle
+        function renderModeButton(button, mode) {
+            var selected = get720pMode() === mode;
+            button.style.background = selected ? '#7b5bf5' : 'rgba(255,255,255,0.05)';
+            button.style.borderColor = selected ? '#a78bfa' : 'rgba(255,255,255,0.12)';
+            button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        }
+
+        function updateModeButtons(buttons) {
+            for (var mode in buttons) {
+                if (buttons.hasOwnProperty(mode)) renderModeButton(buttons[mode], mode);
+            }
+            var activeLabel = document.getElementById('vidaa-720p-mode-active');
+            if (activeLabel) activeLabel.textContent = 'Current mode: ' + getModeLabel(get720pMode());
+        }
+
+        window.__get720pMode = get720pMode;
+        window.__get720pModeLabel = function() {
+            return getModeLabel(get720pMode());
+        };
+
         window.__applyZoom = function() {
             refreshZoom('settings-on');
         };
@@ -1157,6 +1253,123 @@
             console.log('[zoom] Removed UI zoom (settings-off)');
         };
         window.__refreshZoom = refreshZoom;
+        window.__set720pMode = function(mode) {
+            set720pMode(mode);
+            refreshZoom('mode-change:' + mode);
+        };
+
+        window.__show720pModePicker = function() {
+            removeModal('vidaa-720p-mode-modal');
+
+            var modal = document.createElement('div');
+            modal.id = 'vidaa-720p-mode-modal';
+            modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:100002;display:flex;align-items:center;justify-content:center;padding:24px;';
+
+            var panel = document.createElement('div');
+            panel.style.cssText = 'width:min(760px, 92vw);background:#12121a;border:1px solid rgba(255,255,255,0.12);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,0.55);display:flex;flex-direction:column;padding:20px;gap:14px;';
+
+            var header = document.createElement('div');
+            header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;';
+            header.innerHTML = '<div style="font-family:PlusJakartaSans,sans-serif;font-size:1.3rem;font-weight:700;color:#fff;">720p Mode</div>';
+
+            var closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close';
+            closeBtn.style.cssText = 'background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px 16px;font-family:PlusJakartaSans,sans-serif;font-weight:700;cursor:pointer;';
+            closeBtn.onclick = function() { removeModal('vidaa-720p-mode-modal'); };
+            header.appendChild(closeBtn);
+
+            var help = document.createElement('div');
+            help.style.cssText = 'font-family:PlusJakartaSans,sans-serif;font-size:0.95rem;line-height:1.5;color:rgba(255,255,255,0.7);';
+            help.textContent = 'Use Auto for normal VIDAA projectors. Choose UI Only if 720p detection misses your device. Only use UI + Player if you specifically want the old player zoom behavior back.';
+
+            var current = document.createElement('div');
+            current.id = 'vidaa-720p-mode-active';
+            current.style.cssText = 'font-family:PlusJakartaSans,sans-serif;font-size:0.98rem;font-weight:700;color:#dfe2ff;';
+
+            var list = document.createElement('div');
+            list.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;';
+
+            var modeDescriptions = {
+                'auto': 'Detect 720p VIDAA devices and zoom the UI only.',
+                'ui-only': 'Force UI zoom even if detection misses, but keep playback unscaled.',
+                'ui-and-player': 'Force the old zoom path everywhere, including player routes.',
+                'off': 'Disable all 720p zoom behavior.'
+            };
+
+            var buttons = {};
+            Object.keys(MODE_LABELS).forEach(function(mode) {
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.setAttribute('data-720p-mode', mode);
+                button.style.cssText = 'text-align:left;padding:14px 14px 12px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);color:#fff;cursor:pointer;display:flex;flex-direction:column;gap:8px;';
+                button.innerHTML = '<span style="font-family:PlusJakartaSans,sans-serif;font-size:1rem;font-weight:700;">' + getModeLabel(mode) + '</span>' +
+                    '<span style="font-family:PlusJakartaSans,sans-serif;font-size:0.88rem;line-height:1.45;color:rgba(255,255,255,0.72);">' + modeDescriptions[mode] + '</span>';
+                button.onclick = function() {
+                    window.__set720pMode(mode);
+                    updateModeButtons(buttons);
+                };
+                buttons[mode] = button;
+                list.appendChild(button);
+            });
+
+            updateModeButtons(buttons);
+
+            panel.appendChild(header);
+            panel.appendChild(help);
+            panel.appendChild(current);
+            panel.appendChild(list);
+            modal.appendChild(panel);
+            modal.onclick = function(e) { if (e.target === modal) removeModal('vidaa-720p-mode-modal'); };
+            document.body.appendChild(modal);
+            focusFallback([buttons[get720pMode()], closeBtn]);
+        };
+
+        window.__resetVidaaTweaks = function() {
+            removeModal('vidaa-reset-tweaks-modal');
+
+            var modal = document.createElement('div');
+            modal.id = 'vidaa-reset-tweaks-modal';
+            modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:100002;display:flex;align-items:center;justify-content:center;padding:24px;';
+
+            var panel = document.createElement('div');
+            panel.style.cssText = 'width:min(720px, 92vw);background:#12121a;border:1px solid rgba(255,255,255,0.12);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,0.55);display:flex;flex-direction:column;padding:20px;gap:14px;';
+            panel.innerHTML = '<div style="font-family:PlusJakartaSans,sans-serif;font-size:1.3rem;font-weight:700;color:#fff;">Reset VIDAA Tweaks</div>' +
+                '<div style="font-family:PlusJakartaSans,sans-serif;font-size:0.95rem;line-height:1.55;color:rgba(255,255,255,0.74);">This clears this fork\'s saved tweak settings and reloads the app. Server URL is kept.</div>' +
+                '<div style="font-family:PlusJakartaSans,sans-serif;font-size:0.9rem;line-height:1.5;color:rgba(255,255,255,0.6);">It resets zoom mode, subtitle/audio tweaks, playback warnings, low-memory settings, stream stats, launcher prompts, and other `stremio_*` patch keys.</div>';
+
+            var actions = document.createElement('div');
+            actions.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
+
+            var cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.style.cssText = 'background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px 16px;font-family:PlusJakartaSans,sans-serif;font-weight:700;cursor:pointer;';
+
+            var resetBtn = document.createElement('button');
+            resetBtn.textContent = 'Reset and Reload';
+            resetBtn.style.cssText = 'background:#d34d4d;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-family:PlusJakartaSans,sans-serif;font-weight:700;cursor:pointer;';
+
+            cancelBtn.onclick = function() { removeModal('vidaa-reset-tweaks-modal'); };
+            resetBtn.onclick = function() {
+                try {
+                    var keys = [];
+                    for (var i = 0; i < localStorage.length; i++) {
+                        var key = localStorage.key(i);
+                        if (key && key.indexOf('stremio_') === 0 && !RESET_EXCLUDE_KEYS[key]) keys.push(key);
+                    }
+                    for (var j = 0; j < keys.length; j++) localStorage.removeItem(keys[j]);
+                    sessionStorage.removeItem('stremio_install_banner_dismissed_session');
+                } catch (e) {}
+                location.reload();
+            };
+
+            actions.appendChild(cancelBtn);
+            actions.appendChild(resetBtn);
+            panel.appendChild(actions);
+            modal.appendChild(panel);
+            modal.onclick = function(e) { if (e.target === modal) removeModal('vidaa-reset-tweaks-modal'); };
+            document.body.appendChild(modal);
+            focusFallback([resetBtn, cancelBtn]);
+        };
 
         window.addEventListener('hashchange', function() {
             refreshZoom('route-change');
@@ -1165,22 +1378,15 @@
         setTimeout(function() {
             window.screen720p = false;
             setUiZoom(false);
+            syncLegacyZoomKeys(get720pMode());
 
             // ?nozoom=1 URL param forces off
             var params = new URLSearchParams(window.location.search);
             if (params.get('nozoom') === '1') {
-                localStorage.setItem(ZOOM_KEY, 'false');
+                set720pMode('off');
                 console.log('[zoom] Zoom disabled via ?nozoom=1');
                 return;
             }
-
-            // Check if user disabled via settings toggle
-            try {
-                if (localStorage.getItem(ZOOM_KEY) === 'false') {
-                    console.log('[zoom] Zoom disabled via settings');
-                    return;
-                }
-            } catch(e) {}
 
             // Original auto-detect: Hisense firmware + 720p viewport
             try {
@@ -1191,27 +1397,6 @@
 
             refreshZoom('detect');
         }, 2000);
-
-        // Register settings toggle (waits for the VIDAA settings tab system to be ready)
-        var regInterval = setInterval(function() {
-            if (!window.__registerVidaaSettingsItem) return;
-            clearInterval(regInterval);
-
-            window.__registerVidaaSettingsItem({
-                id: 'toggle-720p-zoom',
-                type: 'toggle',
-                label: '720p Zoom',
-                description: 'Scales the UI for 720p projectors/TVs. Playback stays unscaled unless you explicitly allow zoom in the player.',
-                lsKey: ZOOM_KEY,
-                onToggle: function(enabled) {
-                    if (enabled) {
-                        window.__applyZoom();
-                    } else {
-                        window.__removeZoom();
-                    }
-                }
-            });
-        }, 200);
     })();
 </script>
 <script>

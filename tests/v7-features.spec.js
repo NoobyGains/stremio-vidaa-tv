@@ -358,6 +358,28 @@ test.describe('720p zoom detection', () => {
     expect(state.uiZoomApplied).toBe('true');
   });
 
+  test('ui-only mode forces UI zoom even when 720p auto-detection does not trigger', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1080 });
+    await page.addInitScript(() => {
+      localStorage.setItem('stremio_720p_mode', 'ui-only');
+    });
+
+    await page.goto('/');
+    await page.waitForTimeout(2500);
+
+    const state = await page.evaluate(() => ({
+      mode: window.__get720pMode(),
+      screen720p: window.screen720p,
+      zoom: document.body.style.zoom,
+      uiZoomApplied: document.body.getAttribute('data-vidaa-ui-zoom')
+    }));
+
+    expect(state.mode).toBe('ui-only');
+    expect(state.screen720p).toBe(false);
+    expect(state.zoom).toBe('65%');
+    expect(state.uiZoomApplied).toBe('true');
+  });
+
   test('player routes stay unscaled by default on mocked VIDAA 720p devices', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.addInitScript(() => {
@@ -399,6 +421,29 @@ test.describe('720p zoom detection', () => {
 
     expect(state.zoom).toBe('65%');
     expect(state.uiZoomApplied).toBe('true');
+  });
+
+  test('off mode disables zoom even on mocked VIDAA 720p devices', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.addInitScript(() => {
+      localStorage.setItem('stremio_720p_mode', 'off');
+      window.Hisense_GetFirmWareVersion = () => 'mock-fw';
+    });
+
+    await page.goto('/');
+    await page.waitForTimeout(2500);
+
+    const state = await page.evaluate(() => ({
+      mode: window.__get720pMode(),
+      screen720p: window.screen720p,
+      zoom: document.body.style.zoom,
+      uiZoomApplied: document.body.getAttribute('data-vidaa-ui-zoom')
+    }));
+
+    expect(state.mode).toBe('off');
+    expect(state.screen720p).toBe(true);
+    expect(state.zoom).toBe('');
+    expect(state.uiZoomApplied).toBe('false');
   });
 });
 
@@ -502,5 +547,37 @@ test.describe('Diagnostics', () => {
     const blob = await page.locator('#vidaa-diagnostics-modal textarea').inputValue();
     expect(blob).toContain('"build": "ff086d7"');
     expect(blob).toContain('"vidaaDetected": true');
+  });
+
+  test('720p mode picker updates mode and reset keeps server url while clearing tweaks', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.setItem('stremio_server_url', 'http://10.0.0.7:11470');
+      localStorage.setItem('stremio_720p_mode', 'ui-only');
+      localStorage.setItem('stremio_stream_stats', 'true');
+    });
+    await page.evaluate(() => window.__show720pModePicker());
+    await expect(page.locator('#vidaa-720p-mode-modal')).toBeVisible();
+    await page.locator('[data-720p-mode="off"]').click();
+
+    const modeAfterClick = await page.evaluate(() => window.__get720pMode());
+    expect(modeAfterClick).toBe('off');
+
+    await page.evaluate(() => {
+      window.__resetVidaaTweaks();
+      document.querySelector('#vidaa-reset-tweaks-modal button:last-child').click();
+    });
+    await page.waitForLoadState('load');
+    await page.waitForTimeout(250);
+
+    const storageState = await page.evaluate(() => ({
+      serverUrl: localStorage.getItem('stremio_server_url'),
+      mode: localStorage.getItem('stremio_720p_mode'),
+      streamStats: localStorage.getItem('stremio_stream_stats')
+    }));
+
+    expect(storageState.serverUrl).toBe('http://10.0.0.7:11470');
+    expect(storageState.mode).toBeNull();
+    expect(storageState.streamStats).toBeNull();
   });
 });
