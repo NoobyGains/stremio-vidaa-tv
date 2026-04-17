@@ -241,6 +241,66 @@
   .devmode-hint ul {
     margin: 6px 0 0 18px;
   }
+
+  .diag-panel {
+    margin-top: 28px;
+    padding: 18px 22px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    text-align: left;
+  }
+
+  .diag-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .diag-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .diag-copy {
+    background: rgba(123, 91, 245, 0.18);
+    color: #d9d1ff;
+    border: 1px solid rgba(123, 91, 245, 0.4);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .diag-copy:focus {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+  }
+
+  .diag-help {
+    font-size: 16px;
+    color: #9ea0bf;
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+
+  .diag-text {
+    width: 100%;
+    min-height: 220px;
+    resize: vertical;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 14px;
+    background: rgba(0, 0, 0, 0.28);
+    color: #d9dbef;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 14px;
+    line-height: 1.45;
+  }
 </style>
 </head>
 <body>
@@ -275,6 +335,17 @@
       <li>Some TV models may not support Developer Mode — the app often works without it.</li>
     </ul>
   </div>
+
+  <div class="diag-panel">
+    <div class="diag-header">
+      <div class="diag-title">Diagnostics</div>
+      <button id="btnCopyDiag" class="diag-copy" type="button">Copy Debug Blob</button>
+    </div>
+    <div class="diag-help">
+      Paste this into a GitHub issue if installation fails or says success but no launcher app appears.
+    </div>
+    <textarea id="diagText" class="diag-text" readonly></textarea>
+  </div>
 </div>
 
 <div class="footer">
@@ -287,6 +358,7 @@
 
   var APP_ID      = "stremio-vidaa";
   var APP_NAME    = "Stremio";
+  var BUILD_ID    = "ff086d7";
   var INSTALL_ORIGIN = window.location.origin;
   var ICON_URL    = INSTALL_ORIGIN + "/shared/icon.png";
   var APP_URL     = "https://noobygains.github.io/stremio-vidaa-tv/?install_source=method1";
@@ -299,8 +371,64 @@
   var btnInstall  = document.getElementById("btnInstall");
   var btnUninstall = document.getElementById("btnUninstall");
   var notVidaa    = document.getElementById("notVidaa");
+  var btnCopyDiag = document.getElementById("btnCopyDiag");
+  var diagText    = document.getElementById("diagText");
 
   var isVidaa = (typeof Hisense_installApp === "function");
+  var diagState = {
+    build: BUILD_ID,
+    page: "installer",
+    origin: window.location.origin,
+    href: window.location.href,
+    host: window.location.host,
+    path: window.location.pathname,
+    onVidaaHubDomain: window.location.hostname === "vidaahub.com",
+    appId: APP_ID,
+    appUrl: APP_URL,
+    iconUrl: ICON_URL,
+    userAgent: navigator.userAgent,
+    isVidaa: isVidaa,
+    availableApis: {
+      installApp: typeof Hisense_installApp === "function",
+      uninstallApp: typeof Hisense_uninstallApp === "function",
+      addInsecureDomain: typeof Hisense_AddInsecureDomain === "function",
+      getInsecureDomain: typeof Hisense_GetInsecureDomain === "function",
+      getOSVersion: typeof Hisense_GetOSVersion === "function"
+    },
+    registerDomain: {
+      attempted: false,
+      status: "not-run",
+      detail: null
+    },
+    install: {
+      attempted: false,
+      callbackCode: null,
+      callbackStatus: "not-run",
+      exception: null
+    }
+  };
+
+  function renderDiagnostics() {
+    diagText.value = JSON.stringify(diagState, null, 2);
+  }
+
+  function copyDiagnostics() {
+    renderDiagnostics();
+    var blob = diagText.value;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(blob).then(function() {
+        setStatus("Diagnostics copied to clipboard.", "success");
+      }).catch(function() {
+        diagText.focus();
+        diagText.select();
+        setStatus("Copy failed — diagnostics selected for manual copy.", "warning");
+      });
+      return;
+    }
+    diagText.focus();
+    diagText.select();
+    setStatus("Clipboard API unavailable — diagnostics selected for manual copy.", "warning");
+  }
 
   function setStatus(text, type) {
     var prefix = "";
@@ -337,6 +465,10 @@
 
     /* If the API doesn't exist at all, skip gracefully */
     if (typeof Hisense_AddInsecureDomain !== "function") {
+      diagState.registerDomain.attempted = true;
+      diagState.registerDomain.status = "unavailable";
+      diagState.registerDomain.detail = "Hisense_AddInsecureDomain missing";
+      renderDiagnostics();
       setStatus(
         "Domain registration unavailable \u2014 continuing anyway (app uses HTTPS).",
         "warning"
@@ -349,6 +481,10 @@
 
     try {
       var result = Hisense_AddInsecureDomain(GH_DOMAIN);
+      diagState.registerDomain.attempted = true;
+      diagState.registerDomain.status = "ok";
+      diagState.registerDomain.detail = String(result);
+      renderDiagnostics();
 
       /* Some firmware returns a non-zero error code instead of throwing */
       if (typeof result === "number" && result !== 0) {
@@ -360,6 +496,10 @@
     } catch (e) {
       var msg = (e && e.message) ? e.message : String(e);
       var isDisabled = /disabled/i.test(msg);
+      diagState.registerDomain.attempted = true;
+      diagState.registerDomain.status = isDisabled ? "disabled" : "error";
+      diagState.registerDomain.detail = msg;
+      renderDiagnostics();
 
       if (isDisabled) {
         setStatus(
@@ -389,6 +529,8 @@
       /* ok is always true — domain registration is non-blocking */
       setStatus("Installing Stremio...", "working");
       showProgress(60);
+      diagState.install.attempted = true;
+      renderDiagnostics();
 
       try {
         Hisense_installApp(
@@ -401,11 +543,15 @@
           STORE_TYPE,
           function(result) {
             showProgress(100);
+            diagState.install.callbackCode = result;
             if (result === 0) {
+              diagState.install.callbackStatus = "accepted";
               setStatus("Install request accepted. Restart your TV. If Stremio does not appear, reopen this page or try Method 2.", "success");
             } else {
+              diagState.install.callbackStatus = "failed";
               setStatus("Install callback returned code: " + result, "error");
             }
+            renderDiagnostics();
             disableButtons(false);
           }
         );
@@ -413,6 +559,9 @@
         /* The install function may return synchronously before callback fires */
         showProgress(80);
       } catch (e) {
+        diagState.install.callbackStatus = "exception";
+        diagState.install.exception = e.message;
+        renderDiagnostics();
         setStatus("Installation failed: " + e.message, "error");
         hideProgress();
         disableButtons(false);
@@ -475,6 +624,7 @@
   function init() {
     btnInstall.addEventListener("click", doInstall);
     btnUninstall.addEventListener("click", doUninstall);
+    btnCopyDiag.addEventListener("click", copyDiagnostics);
     document.addEventListener("keydown", handleKeydown);
 
     if (!isVidaa) {
@@ -488,6 +638,7 @@
       } catch (e) { /* silent */ }
     }
 
+    renderDiagnostics();
     btnInstall.focus();
   }
 

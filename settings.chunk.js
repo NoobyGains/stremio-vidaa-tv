@@ -660,6 +660,10 @@
                                 makeToggle("Stream Stats", "stremio_stream_stats", null, true),
                                 makeToggle("Playback Warning", "stremio_playback_warning", null, true),
                                 {
+                                    label: "Diagnostics",
+                                    onClick: () => { if (window.__showVidaaDiagnostics) window.__showVidaaDiagnostics(); }
+                                },
+                                {
                                     disabled: () => "Web" === p.name,
                                     label: "Exit Stremio",
                                     onClick: () => { if (window.__exitApp) window.__exitApp(); else window.dispatchEvent(new Event("quit")); }

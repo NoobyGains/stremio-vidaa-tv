@@ -403,4 +403,41 @@ test.describe('Installer flows', () => {
     expect(args.icon3).toBe('http://localhost:8080/shared/icon.png');
     expect(args.appUrl).toContain('https://noobygains.github.io/stremio-vidaa-tv/');
   });
+
+  test('installer diagnostics include domain registration and install results', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.Hisense_AddInsecureDomain = () => 0;
+      window.Hisense_installApp = function(appId, appName, icon1, icon2, icon3, appUrl, storeType, cb) {
+        if (typeof cb === 'function') cb(0);
+      };
+    });
+
+    await page.goto('/installer/');
+    await page.locator('#btnInstall').click();
+    await page.waitForFunction(() => {
+      const el = document.getElementById('diagText');
+      return el && el.value.indexOf('"callbackStatus": "accepted"') !== -1;
+    });
+
+    const blob = await page.locator('#diagText').inputValue();
+    expect(blob).toContain('"page": "installer"');
+    expect(blob).toContain('"status": "ok"');
+    expect(blob).toContain('"callbackStatus": "accepted"');
+  });
+});
+
+test.describe('Diagnostics', () => {
+  test('runtime diagnostics modal can be opened and includes build info', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.Hisense_GetOSVersion = () => 'mock-os';
+      window.Hisense_installApp = function() {};
+    });
+
+    await page.goto('/');
+    await page.evaluate(() => window.__showVidaaDiagnostics());
+    await expect(page.locator('#vidaa-diagnostics-modal')).toBeVisible();
+    const blob = await page.locator('#vidaa-diagnostics-modal textarea').inputValue();
+    expect(blob).toContain('"build": "ff086d7"');
+    expect(blob).toContain('"vidaaDetected": true');
+  });
 });

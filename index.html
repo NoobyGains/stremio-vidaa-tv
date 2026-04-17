@@ -113,6 +113,7 @@
     <div id="patch-version" style="position:fixed;bottom:4px;right:8px;color:rgba(255,255,255,0.3);font-size:10px;z-index:99999;pointer-events:none;">v7</div>
 </body>
 <script>
+    window.__BUILD_COMMIT__ = 'ff086d7';
     // Register service worker with auto-update
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js').then(function(reg) {
@@ -888,6 +889,153 @@
         // Auto-dismiss after 15 seconds
         setTimeout(function() { if (banner.parentNode) banner.remove(); }, 15000);
     }, 5000);
+})();
+</script>
+<script>
+// VIDAA Diagnostics — copyable debug blob for install/runtime reports
+(function() {
+    function safeRead(fn, fallback) {
+        try { return fn(); } catch (e) { return fallback; }
+    }
+
+    function collectDiagnostics() {
+        var trackedKeys = [
+            'stremio_720p_zoom',
+            'stremio_zoom_disable_in_player',
+            'stremio_stream_stats',
+            'stremio_low_memory',
+            'stremio_auto_rebuffer',
+            'stremio_install_banner_last_success_at'
+        ];
+        var settings = {};
+        for (var i = 0; i < trackedKeys.length; i++) {
+            settings[trackedKeys[i]] = safeRead(function(key) {
+                return localStorage.getItem(key);
+            }.bind(null, trackedKeys[i]), null);
+        }
+
+        return {
+            build: window.__BUILD_COMMIT__ || null,
+            patchVersion: window.__STREMIO_PATCH_VERSION__ || null,
+            href: window.location.href,
+            origin: window.location.origin,
+            host: window.location.host,
+            hash: window.location.hash,
+            userAgent: navigator.userAgent,
+            vidaaDetected: !!window.__VIDAA_DEVICE__,
+            isVidaaHubDomain: window.location.hostname === 'vidaahub.com',
+            availableApis: {
+                installApp: safeRead(function() { return typeof Hisense_installApp === 'function'; }, false),
+                addInsecureDomain: safeRead(function() { return typeof Hisense_AddInsecureDomain === 'function'; }, false),
+                getOSVersion: safeRead(function() { return typeof Hisense_GetOSVersion === 'function'; }, false),
+                registerObserver: safeRead(function() { return typeof Hisense_RegisterObserver === 'function'; }, false)
+            },
+            viewport: {
+                innerWidth: window.innerWidth,
+                innerHeight: window.innerHeight,
+                screenWidth: safeRead(function() { return window.screen.width; }, null),
+                screenHeight: safeRead(function() { return window.screen.height; }, null),
+                screen720p: !!window.screen720p
+            },
+            serviceWorker: {
+                controlled: !!navigator.serviceWorker && !!navigator.serviceWorker.controller
+            },
+            installBanner: {
+                lastSuccessAt: settings.stremio_install_banner_last_success_at,
+                dismissedSession: safeRead(function() { return sessionStorage.getItem('stremio_install_banner_dismissed_session'); }, null)
+            },
+            trackedSettings: settings,
+            vidaaCaps: window.__VIDAA_CAPS__ || null,
+            vidaaState: window.__VIDAA_STATE__ || null
+        };
+    }
+
+    function closeDiagnosticsModal() {
+        var existing = document.getElementById('vidaa-diagnostics-modal');
+        if (existing) existing.remove();
+    }
+
+    function copyBlob(textarea) {
+        var text = textarea.value;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function() {
+                var btn = document.getElementById('vidaa-diag-copy-btn');
+                if (btn) btn.textContent = 'Copied';
+            }).catch(function() {
+                textarea.focus();
+                textarea.select();
+            });
+            return;
+        }
+        textarea.focus();
+        textarea.select();
+    }
+
+    window.__showVidaaDiagnostics = function() {
+        closeDiagnosticsModal();
+
+        var modal = document.createElement('div');
+        modal.id = 'vidaa-diagnostics-modal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:100002;display:flex;align-items:center;justify-content:center;padding:24px;';
+
+        var panel = document.createElement('div');
+        panel.style.cssText = 'width:min(920px, 92vw);max-height:88vh;background:#12121a;border:1px solid rgba(255,255,255,0.12);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,0.55);display:flex;flex-direction:column;padding:20px;gap:14px;';
+
+        var header = document.createElement('div');
+        header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;';
+        header.innerHTML = '<div style="font-family:PlusJakartaSans,sans-serif;font-size:1.3rem;font-weight:700;color:#fff;">VIDAA Diagnostics</div>';
+
+        var actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;gap:10px;align-items:center;';
+
+        var copyBtn = document.createElement('button');
+        copyBtn.id = 'vidaa-diag-copy-btn';
+        copyBtn.textContent = 'Copy Debug Blob';
+        copyBtn.style.cssText = 'background:#7b5bf5;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-family:PlusJakartaSans,sans-serif;font-weight:700;cursor:pointer;';
+
+        var closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Close';
+        closeBtn.style.cssText = 'background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px 16px;font-family:PlusJakartaSans,sans-serif;font-weight:700;cursor:pointer;';
+
+        actions.appendChild(copyBtn);
+        actions.appendChild(closeBtn);
+        header.appendChild(actions);
+
+        var help = document.createElement('div');
+        help.style.cssText = 'font-family:PlusJakartaSans,sans-serif;font-size:0.95rem;line-height:1.5;color:rgba(255,255,255,0.7);';
+        help.textContent = 'Paste this into a GitHub issue if install, zoom, or playback behavior looks wrong on your VIDAA device.';
+
+        var textarea = document.createElement('textarea');
+        textarea.readOnly = true;
+        textarea.style.cssText = 'width:100%;min-height:360px;max-height:60vh;resize:vertical;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.26);color:#dfe2ff;padding:16px;font-family:Consolas,\"Courier New\",monospace;font-size:13px;line-height:1.45;';
+        textarea.value = JSON.stringify(collectDiagnostics(), null, 2);
+
+        copyBtn.onclick = function() { copyBlob(textarea); };
+        closeBtn.onclick = closeDiagnosticsModal;
+        modal.onclick = function(e) { if (e.target === modal) closeDiagnosticsModal(); };
+
+        panel.appendChild(header);
+        panel.appendChild(help);
+        panel.appendChild(textarea);
+        modal.appendChild(panel);
+        document.body.appendChild(modal);
+        textarea.focus();
+        textarea.select();
+    };
+
+    var regInterval = setInterval(function() {
+        if (!window.__registerVidaaSettingsItem) return;
+        clearInterval(regInterval);
+        window.__registerVidaaSettingsItem({
+            id: 'show-vidaa-diagnostics',
+            type: 'action',
+            label: 'Diagnostics',
+            description: 'Show a copyable debug blob for install, viewport, and VIDAA runtime state.',
+            onClick: function() {
+                if (window.__showVidaaDiagnostics) window.__showVidaaDiagnostics();
+            }
+        });
+    }, 1000);
 })();
 </script>
 <script>
