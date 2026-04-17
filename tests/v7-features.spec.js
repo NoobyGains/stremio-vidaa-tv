@@ -337,6 +337,69 @@ test.describe('720p zoom detection', () => {
     const is720p = await page.evaluate(() => window.screen720p);
     expect(is720p).toBe(false);
   });
+
+  test('720p zoom applies to UI routes on mocked VIDAA 720p devices', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.addInitScript(() => {
+      window.Hisense_GetFirmWareVersion = () => 'mock-fw';
+    });
+
+    await page.goto('/');
+    await page.waitForTimeout(2500);
+
+    const state = await page.evaluate(() => ({
+      screen720p: window.screen720p,
+      zoom: document.body.style.zoom,
+      uiZoomApplied: document.body.getAttribute('data-vidaa-ui-zoom')
+    }));
+
+    expect(state.screen720p).toBe(true);
+    expect(state.zoom).toBe('65%');
+    expect(state.uiZoomApplied).toBe('true');
+  });
+
+  test('player routes stay unscaled by default on mocked VIDAA 720p devices', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.addInitScript(() => {
+      window.Hisense_GetFirmWareVersion = () => 'mock-fw';
+    });
+
+    await page.goto('/');
+    await page.waitForTimeout(2500);
+    await page.evaluate(() => {
+      window.location.hash = '#/player/test-stream';
+    });
+    await page.waitForTimeout(250);
+
+    const state = await page.evaluate(() => ({
+      zoom: document.body.style.zoom,
+      uiZoomApplied: document.body.getAttribute('data-vidaa-ui-zoom'),
+      hasLegacyPlayerFit: !!document.getElementById('vidaa-player-fit')
+    }));
+
+    expect(state.zoom).toBe('');
+    expect(state.uiZoomApplied).toBe('false');
+    expect(state.hasLegacyPlayerFit).toBe(false);
+  });
+
+  test('player zoom suppression can be explicitly disabled for legacy behavior', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.addInitScript(() => {
+      localStorage.setItem('stremio_zoom_disable_in_player', 'false');
+      window.Hisense_GetFirmWareVersion = () => 'mock-fw';
+    });
+
+    await page.goto('/#/player/test-stream');
+    await page.waitForTimeout(2500);
+
+    const state = await page.evaluate(() => ({
+      zoom: document.body.style.zoom,
+      uiZoomApplied: document.body.getAttribute('data-vidaa-ui-zoom')
+    }));
+
+    expect(state.zoom).toBe('65%');
+    expect(state.uiZoomApplied).toBe('true');
+  });
 });
 
 test.describe('Installer flows', () => {

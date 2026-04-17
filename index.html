@@ -935,7 +935,11 @@
                 innerHeight: window.innerHeight,
                 screenWidth: safeRead(function() { return window.screen.width; }, null),
                 screenHeight: safeRead(function() { return window.screen.height; }, null),
-                screen720p: !!window.screen720p
+                screen720p: !!window.screen720p,
+                uiZoomApplied: document.body && document.body.getAttribute('data-vidaa-ui-zoom') === 'true',
+                zoomEnabled: settings.stremio_720p_zoom !== 'false',
+                playerZoomDisabled: settings.stremio_zoom_disable_in_player !== 'false',
+                playerRoute: (window.location.hash || '').indexOf('#/player/') === 0
             },
             serviceWorker: {
                 controlled: !!navigator.serviceWorker && !!navigator.serviceWorker.controller
@@ -1100,65 +1104,67 @@
     // Toggle in Settings allows users to disable if it causes issues (e.g. aspect ratio on some TVs).
     (function() {
         var ZOOM_KEY = 'stremio_720p_zoom';
-
         var PLAYER_ZOOM_KEY = 'stremio_zoom_disable_in_player';
+        var UI_ZOOM_SCALE = '65%';
+
+        function isPlayerRoute() {
+            return (window.location.hash || '').indexOf('#/player/') === 0;
+        }
+
+        function isZoomEnabled() {
+            try {
+                return localStorage.getItem(ZOOM_KEY) !== 'false';
+            } catch (e) {
+                return true;
+            }
+        }
+
+        function isPlayerZoomDisabled() {
+            try {
+                return localStorage.getItem(PLAYER_ZOOM_KEY) !== 'false';
+            } catch (e) {
+                return true;
+            }
+        }
+
+        function setUiZoom(active) {
+            var nextZoom = active ? UI_ZOOM_SCALE : '';
+            if (document.body.style.zoom !== nextZoom) {
+                document.body.style.zoom = nextZoom;
+            }
+            document.body.setAttribute('data-vidaa-ui-zoom', active ? 'true' : 'false');
+        }
+
+        function shouldApplyUiZoom() {
+            if (!window.screen720p) return false;
+            if (!isZoomEnabled()) return false;
+            if (isPlayerRoute() && isPlayerZoomDisabled()) return false;
+            return true;
+        }
+
+        function refreshZoom(reason) {
+            var shouldApply = shouldApplyUiZoom();
+            setUiZoom(shouldApply);
+            console.log('[zoom] ' + (shouldApply ? 'Applied' : 'Removed') + ' UI zoom' + (reason ? ' (' + reason + ')' : ''));
+        }
 
         // Expose for toggle
         window.__applyZoom = function() {
-            document.body.style.zoom = '65%';
-            window.screen720p = true;
-            console.log('[zoom] Applied 720p zoom');
+            refreshZoom('settings-on');
         };
         window.__removeZoom = function() {
-            document.body.style.zoom = '';
-            window.screen720p = false;
-            console.log('[zoom] Removed 720p zoom');
+            setUiZoom(false);
+            console.log('[zoom] Removed UI zoom (settings-off)');
         };
+        window.__refreshZoom = refreshZoom;
 
-        // Auto-disable zoom in player route (for TVs where zoom breaks aspect ratio)
-        // Only active when "Disable Zoom in Player" toggle is ON
-        // When zoom is removed, the player UI overflows on 720p viewports,
-        // so we also add CSS to constrain the video and player container.
-        var lastPlayerState = false;
-        var playerFixStyle = null;
-        setInterval(function() {
-            if (localStorage.getItem(PLAYER_ZOOM_KEY) !== 'true') return;
-            if (localStorage.getItem(ZOOM_KEY) === 'false') return;
-            var inPlayer = (window.location.hash || '').indexOf('#/player/') === 0;
-            if (inPlayer && !lastPlayerState) {
-                document.body.style.zoom = '';
-                // Add CSS to fit player content to viewport without zoom
-                if (!playerFixStyle) {
-                    playerFixStyle = document.createElement('style');
-                    playerFixStyle.id = 'vidaa-player-fit';
-                    // Constrain the player container to the viewport, but do NOT
-                    // touch the <video> element — position:fixed on video causes
-                    // green/blue color corruption on some TVs (e.g. 55Q6QV).
-                    // The player layout handles video sizing itself.
-                    // Use CSS transform to scale the entire player layout down
-                    // to match the 720p viewport. Uses the same 0.65 factor as
-                    // the UI zoom so player and UI feel consistent.
-                    // transform doesn't corrupt the video compositor on the
-                    // 55Q6QV like zoom does. Scale origin top-left keeps content
-                    // anchored. Root set to 1/0.65 ≈ 153.8% so scaled result
-                    // fills the viewport exactly.
-                    playerFixStyle.textContent = [
-                        '#root { transform: scale(0.65) !important; transform-origin: top left !important; width: 153.85vw !important; height: 153.85vh !important; }'
-                    ].join('\n');
-                    document.head.appendChild(playerFixStyle);
-                }
-                console.log('[zoom] Disabled zoom + applied player fit CSS');
-            } else if (!inPlayer && lastPlayerState) {
-                if (window.screen720p) document.body.style.zoom = '65%';
-                // Remove player fit CSS
-                if (playerFixStyle) { playerFixStyle.remove(); playerFixStyle = null; }
-                console.log('[zoom] Restored zoom, removed player fit CSS');
-            }
-            lastPlayerState = inPlayer;
-        }, 500);
+        window.addEventListener('hashchange', function() {
+            refreshZoom('route-change');
+        });
 
         setTimeout(function() {
             window.screen720p = false;
+            setUiZoom(false);
 
             // ?nozoom=1 URL param forces off
             var params = new URLSearchParams(window.location.search);
@@ -1183,10 +1189,7 @@
                 }
             } catch (e) {}
 
-            if (window.screen720p) {
-                document.body.style.zoom = '65%';
-                console.log('[zoom] Auto-applied 720p zoom');
-            }
+            refreshZoom('detect');
         }, 2000);
 
         // Register settings toggle (waits for the VIDAA settings tab system to be ready)
@@ -1198,7 +1201,7 @@
                 id: 'toggle-720p-zoom',
                 type: 'toggle',
                 label: '720p Zoom',
-                description: 'Scales the UI for 720p projectors/TVs. Turn off if video has wrong aspect ratio.',
+                description: 'Scales the UI for 720p projectors/TVs. Playback stays unscaled unless you explicitly allow zoom in the player.',
                 lsKey: ZOOM_KEY,
                 onToggle: function(enabled) {
                     if (enabled) {
