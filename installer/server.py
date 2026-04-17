@@ -24,6 +24,7 @@ import sys
 import signal
 import mimetypes
 import urllib.parse
+import re
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -34,7 +35,7 @@ DNS_PORT = 53
 HTTPS_PORT = 443
 INSTALLER_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(INSTALLER_DIR)
-UPSTREAM_DNS_SERVERS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
+FALLBACK_UPSTREAM_DNS_SERVERS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
 
 # ---------------------------------------------------------------------------
 # Utility: detect local IP
@@ -51,6 +52,79 @@ def get_local_ip():
     finally:
         s.close()
     return ip
+
+
+def is_ipv4_address(value):
+    """Return True when value is a valid IPv4 address."""
+    try:
+        socket.inet_aton(value)
+        return True
+    except OSError:
+        return False
+
+
+def discover_system_dns_servers():
+    """Discover upstream IPv4 DNS servers from env or host configuration."""
+    env_value = os.environ.get("STREMIO_INSTALLER_DNS", "")
+    if env_value.strip():
+        servers = []
+        for item in env_value.split(","):
+            address = item.strip()
+            if is_ipv4_address(address):
+                servers.append((address, 53))
+        if servers:
+            return servers
+
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["ipconfig", "/all"],
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+            )
+            servers = []
+            collecting = False
+            for line in result.stdout.splitlines():
+                if "DNS Servers" in line:
+                    collecting = True
+                elif collecting:
+                    stripped = line.strip()
+                    if not stripped or ":" in stripped:
+                        collecting = False
+                        continue
+                else:
+                    continue
+
+                for match in re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", line):
+                    if is_ipv4_address(match):
+                        servers.append((match, 53))
+            if servers:
+                return servers
+        except Exception:
+            pass
+    else:
+        try:
+            servers = []
+            with open("/etc/resolv.conf", "r", encoding="utf-8", errors="ignore") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line.startswith("nameserver "):
+                        continue
+                    address = line.split(None, 1)[1].strip()
+                    if is_ipv4_address(address):
+                        servers.append((address, 53))
+            if servers:
+                return servers
+        except Exception:
+            pass
+
+    return list(FALLBACK_UPSTREAM_DNS_SERVERS)
+
+
+UPSTREAM_DNS_SERVERS = discover_system_dns_servers()
 
 # ---------------------------------------------------------------------------
 # SSL certificate generation
@@ -336,7 +410,9 @@ def main():
     generate_self_signed_cert(cert_path, key_path)
     print("[INIT]  Certificate ready")
     print("")
+    upstream_hosts = ", ".join([host for host, _ in UPSTREAM_DNS_SERVERS])
     print("[INIT]  Spoofing only " + SPOOF_DOMAIN + " and forwarding all other DNS queries upstream")
+    print("[INIT]  Upstream DNS servers: " + upstream_hosts)
     print("")
 
     # Start DNS server in a background thread

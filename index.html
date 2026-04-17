@@ -822,7 +822,14 @@
 (function() {
     if (!window.__VIDAA_DEVICE__) return;
     var SESSION_DISMISS_KEY = 'stremio_install_banner_dismissed_session';
+    var LAST_SUCCESS_KEY = 'stremio_install_banner_last_success_at';
+    var SUCCESS_SUPPRESS_MS = 24 * 60 * 60 * 1000;
     if (sessionStorage.getItem(SESSION_DISMISS_KEY)) return;
+
+    try {
+        var lastSuccessAt = parseInt(localStorage.getItem(LAST_SUCCESS_KEY), 10);
+        if (lastSuccessAt && (Date.now() - lastSuccessAt) < SUCCESS_SUPPRESS_MS) return;
+    } catch (e) {}
 
     // Check if install API is available
     var canInstall = false;
@@ -852,6 +859,7 @@
                 Hisense_installApp('stremio-vidaa', 'Stremio', iconUrl, iconUrl, iconUrl, appUrl, 'store', function(status) {
                     if (status === 0) {
                         sessionStorage.setItem(SESSION_DISMISS_KEY, '1');
+                        try { localStorage.setItem(LAST_SUCCESS_KEY, String(Date.now())); } catch (e) {}
                         text.textContent = 'Install request accepted. Restart your TV. If Stremio does not appear, revisit this page and try again.';
                         btn.style.display = 'none';
                         setTimeout(function() { banner.remove(); }, 8000);

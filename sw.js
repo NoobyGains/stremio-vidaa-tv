@@ -1,4 +1,4 @@
-var CACHE_NAME = 'stremio-vidaa-v7';
+var CACHE_NAME = 'stremio-vidaa-v8';
 var ASSETS = [
   './',
   './index.html',
@@ -60,17 +60,40 @@ self.addEventListener('fetch', function(e) {
     normalizedRequest = new Request(url.toString());
   }
 
+  function updateCacheFromNetwork() {
+    return fetch(req).then(function(response) {
+      if (response && response.status === 200) {
+        var clone = response.clone();
+        caches.open(CACHE_NAME).then(function(cache) {
+          cache.put(normalizedRequest, clone);
+        });
+      }
+      return response;
+    });
+  }
+
+  var isAppShellRequest =
+    req.mode === 'navigate' ||
+    req.destination === 'document' ||
+    req.destination === 'script' ||
+    req.destination === 'worker' ||
+    req.destination === 'font' ||
+    req.url.endsWith('.html') ||
+    req.url.endsWith('.js') ||
+    req.url.endsWith('.wasm');
+
+  if (isAppShellRequest) {
+    e.respondWith(
+      updateCacheFromNetwork().catch(function() {
+        return caches.match(normalizedRequest);
+      })
+    );
+    return;
+  }
+
   e.respondWith(
     caches.match(normalizedRequest).then(function(cached) {
-      var fetchPromise = fetch(req).then(function(response) {
-        if (response && response.status === 200) {
-          var clone = response.clone();
-          caches.open(CACHE_NAME).then(function(cache) {
-            cache.put(normalizedRequest, clone);
-          });
-        }
-        return response;
-      }).catch(function() {
+      var fetchPromise = updateCacheFromNetwork().catch(function() {
         return cached;
       });
       return cached || fetchPromise;

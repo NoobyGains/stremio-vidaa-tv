@@ -360,6 +360,25 @@ test.describe('Installer flows', () => {
     const persisted = await page.evaluate(() => localStorage.getItem('stremio_installed_to_launcher'));
     expect(persisted).toBeNull();
 
+    const successStamp = await page.evaluate(() => localStorage.getItem('stremio_install_banner_last_success_at'));
+    expect(successStamp).toBeTruthy();
+
+    await context.close();
+  });
+
+  test('direct launcher install prompt is suppressed after a recent accepted install', async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+
+    await page.addInitScript(() => {
+      localStorage.setItem('stremio_install_banner_last_success_at', String(Date.now()));
+      window.Hisense_GetOSVersion = () => 'mock-os';
+      window.Hisense_installApp = function() {};
+    });
+
+    await page.goto('/');
+    await expect(page.locator('#install-banner')).toHaveCount(0);
+
     await context.close();
   });
 
