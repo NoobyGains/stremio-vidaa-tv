@@ -621,8 +621,16 @@
             }
         }
 
-        // Info (457) — show stream info (only if Stream Stats overlay is not enabled)
-        if (code === 457 && localStorage.getItem('stremio_stream_stats') !== 'true') {
+        // Info (457) — show one-shot stream info panel.
+        // Only fires when Stream Stats overlay is explicitly disabled — otherwise
+        // Info is owned by the stats overlay and we'd be double-triggering.
+        // Some remotes (55Q6QV projector, many Hisense projectors) have no Info
+        // button at all, so Red is accepted as an alias when in the player and
+        // the stats overlay is off.
+        var inPlayerNow = (window.location.hash || '').indexOf('#/player/') === 0;
+        var statsDisabled = localStorage.getItem('stremio_stream_stats') === 'false';
+        var infoTriggered = (code === 457) || (code === 403 && inPlayerNow && statsDisabled);
+        if (infoTriggered && statsDisabled) {
             var video = document.querySelector('video');
             if (!video) return;
             var info = document.getElementById('stream-info');
@@ -2771,14 +2779,18 @@
         wasInPlayer = inPlayer;
     }, 1000);
 
-    // ─── Info Button Shows Overlay ────────────────────────────────
+    // ─── Info / Red Button Shows Overlay ──────────────────────────
+    // Some Hisense projector remotes (55Q6QV, M2 Pro, PX3-Pro, C2) have no
+    // Info / Display button at all — only the four colour keys. Accept Red
+    // (403) as an alias so those users can still see the torrent stats.
     document.addEventListener('keydown', function(e) {
-        // Info/Display button on remote (keyCode 457) or i key
-        if ((e.keyCode === 457 || e.keyCode === 73) && activeTorrent) {
-            var hash = window.location.hash || '';
-            if (hash.indexOf('#/player/') !== 0) return;
-            showOverlay();
-        }
+        if (!activeTorrent) return;
+        var isInfo = e.keyCode === 457 || e.keyCode === 73;
+        var isRed = e.keyCode === 403;
+        if (!isInfo && !isRed) return;
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/player/') !== 0) return;
+        showOverlay();
     }, true);
 
     // ─── Settings Toggle Registration ────────────────────────────────
