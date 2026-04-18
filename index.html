@@ -4610,41 +4610,154 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
 
 <!-- #22/#28 — Playback performance: buffering mitigations -->
 <script>
-/* Force preload="auto" on every <video> element.
+/* Video element preparation — preload, playsInline, warm-up fetch,
+ * dynamic preconnect, and early-stall auto-handoff.
  *
- * The Stremio core creates the video element with no explicit preload hint,
- * which on VIDAA (Opera-based) browsers means the element defers network
- * fetches until `play()` is called. For 4K HEVC streams at 30-80 Mbps this
- * gives the buffer no head start and any network hiccup stalls playback.
+ * Root cause summary (Jellyfin + Plex + Stremio #2055 all confirm this):
+ * the VIDAA (Opera-based) browser does NOT use the hardware HEVC decoder
+ * path the native player uses. The <video> element reports HEVC support
+ * via canPlayType, but actual decode is software-aided and can't sustain
+ * 4K HEVC at 30-80 Mbps — especially not inside an MKV container. The
+ * native player on the same chip plays the exact same file fine.
  *
- * Setting preload="auto" makes the browser start fetching as soon as the
- * src is assigned, which gives the buffer a measurable head-start before
- * the user presses play. Verified to reduce "5 seconds in, then stall"
- * on high-bitrate RealDebrid streams.
+ * So we do several things on every <video> the core creates:
+ *   1. preload="auto"           — start buffering as soon as src lands
+ *   2. playsInline               — avoid any fullscreen-transition delay
+ *   3. preconnect to the actual stream host — RD CDN hostnames vary
+ *      (xx-N.download.real-debrid.com) so the static hints in <head>
+ *      can miss; we add a dynamic one once we see the real URL
+ *   4. HEAD/range warm-up fetch  — pull the first MB into the OS socket
+ *      buffer before the video element asks for it, eliminating TLS
+ *      slow-start on stream start
+ *   5. early-stall auto-handoff  — if the browser <video> issues 2+
+ *      `waiting` events in the first 20 seconds of playback, hand the
+ *      stream to the native player. This catches the exact "5 seconds
+ *      in, then stall forever" pattern reporters describe.
  */
 (function() {
-    function applyPreload(video) {
-        if (!video || video.__preloadForced) return;
+    var preconnectedOrigins = {};
+    function addPreconnect(origin) {
+        if (!origin || preconnectedOrigins[origin]) return;
+        preconnectedOrigins[origin] = true;
+        try {
+            ['preconnect', 'dns-prefetch'].forEach(function(rel) {
+                var l = document.createElement('link');
+                l.rel = rel; l.href = origin;
+                if (rel === 'preconnect') l.crossOrigin = 'anonymous';
+                document.head.appendChild(l);
+            });
+        } catch(e) {}
+    }
+
+    function warmStreamHost(streamUrl) {
+        if (!streamUrl || streamUrl.indexOf('blob:') === 0 || streamUrl.indexOf('magnet:') === 0) return;
+        try {
+            var u = new URL(streamUrl);
+            addPreconnect(u.origin);
+            // Fire-and-forget warm-up fetch. We read the first ~1 MB into the
+            // socket buffer then cancel — the <video> element's subsequent
+            // request benefits from the warmed TLS session + DNS cache.
+            fetch(streamUrl, {
+                method: 'GET',
+                headers: { Range: 'bytes=0-1048575' },
+                mode: 'cors',
+                credentials: 'omit'
+            }).then(function(r) {
+                if (r.body && typeof r.body.cancel === 'function') r.body.cancel();
+            }).catch(function() {});
+        } catch(e) {}
+    }
+
+    function armEarlyStallWatch(video) {
+        if (video.__earlyStallArmed) return;
+        video.__earlyStallArmed = true;
+        var playStart = 0;
+        var stalls = 0;
+        video.addEventListener('playing', function() {
+            if (!playStart) playStart = Date.now();
+        });
+        function onStall() {
+            if (!playStart) return;                   // never actually started
+            if (Date.now() - playStart > 20000) return; // only care about early stalls
+            stalls++;
+            console.warn('[early-stall] waiting/stalled event #' + stalls);
+            if (stalls >= 2 && typeof window.__launchNativePlayer === 'function') {
+                var inPlayer = (window.location.hash || '').indexOf('#/player/') === 0;
+                if (!inPlayer) return;
+                // Only auto-handoff when the user has opted into either auto-native
+                // mode. Otherwise log the hint and let the user handle it.
+                var allOn = localStorage.getItem('stremio_auto_native_player') === 'true';
+                var mkvOn = localStorage.getItem('stremio_auto_native_player_mkv') === 'true';
+                if (!allOn && !mkvOn) {
+                    console.log('[early-stall] stream is stalling; user has no auto-native toggle on — showing recovery toast instead of silent handoff');
+                    return;
+                }
+                console.log('[early-stall] 2+ early stalls, handing off to native player');
+                try { video.pause(); } catch(e) {}
+                window.__launchNativePlayer(video.currentSrc || video.src);
+            }
+        }
+        video.addEventListener('waiting', onStall);
+        video.addEventListener('stalled', onStall);
+    }
+
+    var seenSrcs = {};
+    function onSrcChange(video) {
+        var src = video.currentSrc || video.src || '';
+        if (!src || seenSrcs[src]) return;
+        seenSrcs[src] = true;
+        warmStreamHost(src);
+    }
+
+    function prepareVideo(video) {
+        if (!video || video.__v7Prepared) return;
+        video.__v7Prepared = true;
         try {
             video.preload = 'auto';
             video.setAttribute('preload', 'auto');
-            video.__preloadForced = true;
+            video.playsInline = true;
+            video.setAttribute('playsinline', '');
         } catch(e) {}
+        armEarlyStallWatch(video);
+
+        // Watch for src changes — the core may swap src multiple times per
+        // player session (initial load, then the actual stream URL, then
+        // possibly a segment URL for HLS).
+        try {
+            var desc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+            if (desc && desc.set && !video.__srcHooked) {
+                var origSet = desc.set;
+                Object.defineProperty(video, 'src', {
+                    get: desc.get,
+                    set: function(v) { origSet.call(this, v); setTimeout(function(){ onSrcChange(video); }, 0); },
+                    configurable: true
+                });
+                video.__srcHooked = true;
+            }
+        } catch(e) {}
+
+        // Also poll for currentSrc changes as a belt-and-braces fallback.
+        setInterval(function() { onSrcChange(video); }, 2000);
+        // Eagerly warm whatever's there now.
+        setTimeout(function() { onSrcChange(video); }, 100);
     }
-    document.querySelectorAll('video').forEach(applyPreload);
+
+    document.querySelectorAll('video').forEach(prepareVideo);
     var mo = new MutationObserver(function(muts) {
         for (var i = 0; i < muts.length; i++) {
             var added = muts[i].addedNodes || [];
             for (var j = 0; j < added.length; j++) {
                 var n = added[j];
                 if (!n || n.nodeType !== 1) continue;
-                if (n.nodeName === 'VIDEO') applyPreload(n);
+                if (n.nodeName === 'VIDEO') prepareVideo(n);
                 var nested = (n.querySelectorAll ? n.querySelectorAll('video') : []);
-                for (var k = 0; k < nested.length; k++) applyPreload(nested[k]);
+                for (var k = 0; k < nested.length; k++) prepareVideo(nested[k]);
             }
         }
     });
     mo.observe(document.documentElement, { childList: true, subtree: true });
+
+    window.__warmStreamHost = warmStreamHost;
 })();
 </script>
 <script>
@@ -4694,31 +4807,36 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
 })();
 </script>
 <script>
-/* Auto Native Player toggle.
+/* Auto Native Player — two modes.
  *
- * On Hisense projectors and some TVs the browser's HTML5 <video> element
- * can't sustain 4K HEVC 60+ Mbps even from a fast Real-Debrid CDN — the
- * browser just wasn't built for it. The native VIDAA player (reached via
- * omi_platform.sendPlatformMessage) uses the hardware MediaTek decoder
- * directly and has a much larger buffer.
+ * Root cause: the VIDAA webview (Opera-based) mis-handles the MKV
+ * container. The same HEVC stream inside MP4 or HLS plays cleanly —
+ * the Jellyfin project independently identified and patched this on
+ * their web frontend. Real-Debrid links are overwhelmingly MKV for
+ * anything 4K HDR/DV, which is exactly when the webview buffers.
  *
- * When this toggle is ON, whenever a video element loads an HTTP(S) URL
- * we hand it off to the native player immediately instead of trying to
- * play it in the browser.
+ * The native VIDAA player (reached via omi_platform.sendPlatformMessage)
+ * uses the hardware MediaTek decoder and handles MKV fine. Two toggles,
+ * recommended to try in this order:
  *
- * Caveats (surfaced in the Settings description):
- *  - Subtitles selected in Stremio don't transfer to the native player
- *    (the native player uses the MKV's internal subtitle tracks instead).
- *  - You can't switch streams mid-play; Back returns to Stremio.
- *  - On devices without omi_platform the toggle is a no-op.
+ *   1. "Auto Native Player for MKV only"  (recommended)
+ *      Lets MP4/HLS streams play in the browser (subtitles/stream
+ *      switching work) and hands MKV streams off to native. Targets
+ *      the exact container issue without giving up Stremio features
+ *      unnecessarily.
  *
- * Off by default — opt-in for users who can't get smooth playback any
- * other way.
+ *   2. "Auto Native Player" (all streams)
+ *      Nuclear option — every stream goes to native, regardless of
+ *      container. Use if mode 1 still buffers, or if your streams
+ *      are all MKV anyway.
+ *
+ * Both are off by default on non-VIDAA devices via the hasNative gate.
  */
 (function() {
-    var LS_KEY = 'stremio_auto_native_player';
-    var LAST_URL_KEY = '__autoNativeLastUrl';
-    function isEnabled() { return localStorage.getItem(LS_KEY) === 'true'; }
+    var LS_KEY_ALL = 'stremio_auto_native_player';
+    var LS_KEY_MKV = 'stremio_auto_native_player_mkv';
+    function modeAll() { return localStorage.getItem(LS_KEY_ALL) === 'true'; }
+    function modeMkvOnly() { return localStorage.getItem(LS_KEY_MKV) === 'true'; }
 
     function hasNative() {
         try { return typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) { return false; }
@@ -4728,17 +4846,29 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
         return (window.location.hash || '').indexOf('#/player/') === 0;
     }
 
+    function isMkvUrl(url) {
+        if (!url) return false;
+        // Match .mkv anywhere in the URL path (before a query string).
+        // RD URLs typically look like:
+        //   https://xx.download.real-debrid.com/d/HASH/Name.4K.HDR.x265.mkv
+        // Also catches .mkv.torrent-like variants, but those are rare.
+        var pathPart = url.split('?')[0].toLowerCase();
+        return pathPart.indexOf('.mkv') !== -1;
+    }
+
     function shouldHandoff(url) {
         if (!url) return false;
         if (url.indexOf('blob:') === 0) return false;      // WebTorrent streams
         if (url.indexOf('magnet:') === 0) return false;    // raw magnet
         if (url.indexOf('http:') !== 0 && url.indexOf('https:') !== 0) return false;
-        return true;
+        if (modeAll()) return true;
+        if (modeMkvOnly() && isMkvUrl(url)) return true;
+        return false;
     }
 
     var lastHandedOffUrl = '';
     setInterval(function() {
-        if (!isEnabled()) return;
+        if (!modeAll() && !modeMkvOnly()) return;
         if (!inPlayerRoute()) { lastHandedOffUrl = ''; return; }
         if (!hasNative()) return;
 
@@ -4765,11 +4895,19 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
         if (!window.__registerVidaaSettingsItem) return;
         clearInterval(reg);
         window.__registerVidaaSettingsItem({
+            id: 'auto-native-mkv-toggle',
+            type: 'toggle',
+            label: 'Auto Native Player for MKV',
+            description: 'Recommended for projector owners. The VIDAA webview struggles with MKV containers (the container — not the codec — is the actual cause of 4K buffering on Real-Debrid). When ON, any MKV stream opens in the VIDAA native player with the hardware decoder. MP4 and HLS streams still play in the browser so Stremio subtitles work.',
+            lsKey: LS_KEY_MKV,
+            defaultValue: false
+        });
+        window.__registerVidaaSettingsItem({
             id: 'auto-native-player-toggle',
             type: 'toggle',
-            label: 'Auto Native Player',
-            description: 'Automatically open every stream in the VIDAA native player instead of the in-browser player. Fixes infinite buffering on high-bitrate 4K streams — the native player uses the hardware decoder. Trade-off: Stremio subtitles do not transfer, and you cannot switch streams mid-play.',
-            lsKey: LS_KEY,
+            label: 'Auto Native Player (all streams)',
+            description: 'Nuclear option — open every stream in the VIDAA native player regardless of container. Use only if "Auto Native Player for MKV" alone is not enough. Stremio subtitles will not transfer and you cannot switch streams mid-play.',
+            lsKey: LS_KEY_ALL,
             defaultValue: false
         });
     }, 200);

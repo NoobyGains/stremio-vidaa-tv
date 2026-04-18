@@ -1,4 +1,4 @@
-var CACHE_NAME = 'stremio-vidaa-v8';
+var CACHE_NAME = 'stremio-vidaa-v9';
 var ASSETS = [
   './',
   './index.html',
@@ -51,6 +51,12 @@ self.addEventListener('fetch', function(e) {
   var req = e.request;
   if (req.method !== 'GET') return;
   if (req.url.indexOf(self.location.origin) !== 0) return;
+
+  // Never touch media range requests. If we ever served video from the
+  // same origin and this handler intercepted, Range semantics break and
+  // seeking stops working. Defensive skip regardless of origin.
+  if (req.headers && req.headers.get('range')) return;
+  if (/\.(mkv|mp4|m4v|webm|m3u8|ts|mpd|mov)(\?|$)/i.test(req.url)) return;
 
   // Only construct normalized request when query string is present
   var normalizedRequest = req;
