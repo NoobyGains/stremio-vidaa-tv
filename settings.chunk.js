@@ -643,44 +643,51 @@
                                     }]
                                 };
                             }
+                            function makeAction(labelOrGetter, onClick, disabled) {
+                                return {
+                                    get label() {
+                                        return typeof labelOrGetter === 'function' ? labelOrGetter() : labelOrGetter;
+                                    },
+                                    disabled: disabled,
+                                    onClick: () => {
+                                        onClick();
+                                        forceRerender();
+                                    }
+                                };
+                            }
                             return [
                                 makeToggle("Force Stereo", "stremio_force_stereo"),
                                 makeToggle("Audio Delay", "stremio_audio_delay_enabled"),
                                 makeToggle("Auto-Play Stream", "stremio_autoplay_best"),
                                 makeToggle("Mark Season", "stremio_mark_season"),
                                 makeToggle("Subtitle Drift Fix", "stremio_sub_drift_fix"),
-                                {
-                                    get label() {
-                                        return window.__get720pModeLabel ? "720p Mode: " + window.__get720pModeLabel() : "720p Mode";
-                                    },
-                                    onClick: () => { if (window.__show720pModePicker) window.__show720pModePicker(); }
-                                },
+                                makeAction(function() {
+                                    return window.__get720pModeLabel ? "720p Mode: " + window.__get720pModeLabel() : "720p Mode";
+                                }, function() {
+                                    if (window.__cycle720pMode) window.__cycle720pMode();
+                                }),
                                 makeToggle("Torrent Streaming", "stremio_webtorrent_enabled"),
                                 makeToggle("Low Memory Mode", "stremio_low_memory", null, true),
                                 makeToggle("Auto-Rebuffer", "stremio_auto_rebuffer", null, true),
                                 makeToggle("Stream Stats", "stremio_stream_stats", null, true),
                                 makeToggle("Playback Warning", "stremio_playback_warning", null, true),
-                                {
-                                    label: "Playback Diagnostics",
-                                    onClick: () => { if (window.__showPlaybackDiagnostics) window.__showPlaybackDiagnostics(); }
-                                },
-                                {
-                                    label: "Apply Safe Playback Mode",
-                                    onClick: () => { if (window.__applyPlaybackSafeMode) window.__applyPlaybackSafeMode(); }
-                                },
-                                {
-                                    label: "Reset VIDAA Tweaks",
-                                    onClick: () => { if (window.__resetVidaaTweaks) window.__resetVidaaTweaks(); }
-                                },
-                                {
-                                    label: "Diagnostics",
-                                    onClick: () => { if (window.__showVidaaDiagnostics) window.__showVidaaDiagnostics(); }
-                                },
-                                {
-                                    disabled: () => "Web" === p.name,
-                                    label: "Exit Stremio",
-                                    onClick: () => { if (window.__exitApp) window.__exitApp(); else window.dispatchEvent(new Event("quit")); }
-                                }
+                                makeAction("Playback Diagnostics", function() {
+                                    if (window.__showPlaybackDiagnostics) window.__showPlaybackDiagnostics();
+                                }),
+                                makeAction("Apply Safe Playback Mode", function() {
+                                    if (window.__applyPlaybackSafeMode) window.__applyPlaybackSafeMode();
+                                }),
+                                makeAction(function() {
+                                    return window.__getResetVidaaTweaksLabel ? window.__getResetVidaaTweaksLabel() : "Reset VIDAA Tweaks";
+                                }, function() {
+                                    if (window.__triggerResetVidaaTweaks) window.__triggerResetVidaaTweaks();
+                                }),
+                                makeAction("Diagnostics", function() {
+                                    if (window.__showVidaaDiagnostics) window.__showVidaaDiagnostics();
+                                }),
+                                makeAction("Exit Stremio", function() {
+                                    if (window.__exitApp) window.__exitApp(); else window.dispatchEvent(new Event("quit"));
+                                }, () => "Web" === p.name)
                             ];
                         })()
                     }]

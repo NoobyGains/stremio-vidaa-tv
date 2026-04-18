@@ -1078,6 +1078,16 @@
         textarea.select();
     }
 
+    window.__showVidaaToast = function(message, duration) {
+        var toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;left:50%;bottom:42px;transform:translateX(-50%);background:rgba(0,0,0,0.88);color:#fff;padding:12px 18px;border-radius:10px;font-size:1rem;font-family:PlusJakartaSans,sans-serif;z-index:100003;max-width:min(88vw, 720px);text-align:center;box-shadow:0 12px 30px rgba(0,0,0,0.4);';
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(function() {
+            if (toast.parentNode) toast.remove();
+        }, duration || 2200);
+    };
+
     function playbackTrackedSettings() {
         var trackedKeys = [
             'stremio_720p_mode',
@@ -1243,36 +1253,26 @@
         textarea.select();
     };
 
-    window.__applyPlaybackSafeMode = function() {
-        closeSafeModeModal();
-        var cancelBtn = createVidaaActionButton('Cancel', { id: 'vidaa-safe-mode-cancel-btn' });
-        var applyBtn = createVidaaActionButton('Apply and Reload', { id: 'vidaa-safe-mode-apply-btn', success: true });
-        var modalApi = createVidaaModal({
-            id: 'vidaa-safe-mode-modal',
-            title: 'Apply Safe Playback Mode',
-            width: '760px',
-            footerButtons: [cancelBtn, applyBtn]
-        });
-
-        modalApi.body.innerHTML = '<div style="font-family:PlusJakartaSans,sans-serif;font-size:0.95rem;line-height:1.55;color:rgba(255,255,255,0.74);">This keeps the stable playback safeguards on and turns off the riskiest optional tweaks, then reloads the app.</div>' +
-            '<div style="font-family:PlusJakartaSans,sans-serif;font-size:0.9rem;line-height:1.5;color:rgba(255,255,255,0.6);">It sets 720p mode back to Auto, disables force stereo, audio-delay override, subtitle drift fixes, WebTorrent, and stream stats, while enabling low-memory mode, auto-rebuffer, and playback warnings.</div>';
-
-        cancelBtn.onclick = closeSafeModeModal;
-        applyBtn.onclick = function() {
-            try {
-                localStorage.setItem('stremio_720p_mode', 'auto');
-                localStorage.setItem('stremio_force_stereo', 'false');
-                localStorage.setItem('stremio_audio_delay_enabled', 'false');
-                localStorage.setItem('stremio_sub_drift_fix', 'false');
-                localStorage.setItem('stremio_webtorrent_enabled', 'false');
-                localStorage.setItem('stremio_stream_stats', 'false');
-                localStorage.setItem('stremio_low_memory', 'true');
-                localStorage.setItem('stremio_auto_rebuffer', 'true');
-                localStorage.setItem('stremio_playback_warning', 'true');
-            } catch (e) {}
-            location.reload();
-        };
-        applyBtn.focus();
+    window.__applyPlaybackSafeMode = function(opts) {
+        try {
+            localStorage.setItem('stremio_720p_mode', 'auto');
+            localStorage.setItem('stremio_force_stereo', 'false');
+            localStorage.setItem('stremio_audio_delay_enabled', 'false');
+            localStorage.setItem('stremio_sub_drift_fix', 'false');
+            localStorage.setItem('stremio_webtorrent_enabled', 'false');
+            localStorage.setItem('stremio_stream_stats', 'false');
+            localStorage.setItem('stremio_low_memory', 'true');
+            localStorage.setItem('stremio_auto_rebuffer', 'true');
+            localStorage.setItem('stremio_playback_warning', 'true');
+        } catch (e) {}
+        if (opts && opts.reload === false) {
+            if (window.__showVidaaToast) {
+                window.__showVidaaToast('Safe Playback Mode applied', 1800);
+            }
+            return true;
+        }
+        location.reload();
+        return true;
     };
 
     var regInterval = setInterval(function() {
@@ -1471,19 +1471,11 @@
             console.log('[zoom] ' + (shouldApply ? 'Applied' : 'Removed') + ' UI zoom' + (reason ? ' (' + reason + ')' : ''));
         }
 
-        function renderModeButton(button, mode) {
-            var selected = get720pMode() === mode;
-            button.style.background = selected ? '#7b5bf5' : 'rgba(255,255,255,0.05)';
-            button.style.borderColor = selected ? '#a78bfa' : 'rgba(255,255,255,0.12)';
-            button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-        }
-
-        function updateModeButtons(buttons) {
-            for (var mode in buttons) {
-                if (buttons.hasOwnProperty(mode)) renderModeButton(buttons[mode], mode);
-            }
-            var activeLabel = document.getElementById('vidaa-720p-mode-active');
-            if (activeLabel) activeLabel.textContent = 'Current mode: ' + getModeLabel(get720pMode());
+        function nextMode(mode) {
+            if (mode === 'auto') return 'ui-only';
+            if (mode === 'ui-only') return 'ui-and-player';
+            if (mode === 'ui-and-player') return 'off';
+            return 'auto';
         }
 
         window.__get720pMode = get720pMode;
@@ -1503,78 +1495,60 @@
             set720pMode(mode);
             refreshZoom('mode-change:' + mode);
         };
+        window.__cycle720pMode = function() {
+            var mode = nextMode(get720pMode());
+            set720pMode(mode);
+            refreshZoom('mode-cycle:' + mode);
+            if (window.__showVidaaToast) {
+                window.__showVidaaToast('720p Mode: ' + getModeLabel(mode), 1800);
+            }
+            return mode;
+        };
+        window.__show720pModePicker = window.__cycle720pMode;
 
-        window.__show720pModePicker = function() {
-            var modalApi = window.__createVidaaModal({
-                id: 'vidaa-720p-mode-modal',
-                title: '720p Mode',
-                width: '760px',
-                helpText: 'Use Auto for normal VIDAA projectors. Choose UI Only if 720p detection misses your device. Only use UI + Player if you specifically want the old player zoom behavior back.'
-            });
-            var current = document.createElement('div');
-            current.id = 'vidaa-720p-mode-active';
-            current.style.cssText = 'font-family:PlusJakartaSans,sans-serif;font-size:0.98rem;font-weight:700;color:#dfe2ff;';
+        function performResetVidaaTweaks() {
+            try {
+                var keys = [];
+                for (var i = 0; i < localStorage.length; i++) {
+                    var key = localStorage.key(i);
+                    if (key && key.indexOf('stremio_') === 0 && !RESET_EXCLUDE_KEYS[key]) keys.push(key);
+                }
+                for (var j = 0; j < keys.length; j++) localStorage.removeItem(keys[j]);
+                sessionStorage.removeItem('stremio_install_banner_dismissed_session');
+            } catch (e) {}
+            location.reload();
+        }
 
-            var list = document.createElement('div');
-            list.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;';
+        var resetVidaaTweaksArmedUntil = 0;
+        var resetVidaaTweaksTimer = null;
 
-            var modeDescriptions = {
-                'auto': 'Detect 720p VIDAA devices and zoom the UI only.',
-                'ui-only': 'Force UI zoom even if detection misses, but keep playback unscaled.',
-                'ui-and-player': 'Force the old zoom path everywhere, including player routes.',
-                'off': 'Disable all 720p zoom behavior.'
-            };
+        function disarmResetVidaaTweaks() {
+            resetVidaaTweaksArmedUntil = 0;
+            if (resetVidaaTweaksTimer) {
+                clearTimeout(resetVidaaTweaksTimer);
+                resetVidaaTweaksTimer = null;
+            }
+        }
 
-            var buttons = {};
-            Object.keys(MODE_LABELS).forEach(function(mode) {
-                var button = document.createElement('button');
-                button.type = 'button';
-                button.setAttribute('data-720p-mode', mode);
-                button.style.cssText = 'text-align:left;padding:14px 14px 12px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);color:#fff;cursor:pointer;display:flex;flex-direction:column;gap:8px;';
-                button.innerHTML = '<span style="font-family:PlusJakartaSans,sans-serif;font-size:1rem;font-weight:700;">' + getModeLabel(mode) + '</span>' +
-                    '<span style="font-family:PlusJakartaSans,sans-serif;font-size:0.88rem;line-height:1.45;color:rgba(255,255,255,0.72);">' + modeDescriptions[mode] + '</span>';
-                button.onclick = function() {
-                    window.__set720pMode(mode);
-                    updateModeButtons(buttons);
-                };
-                buttons[mode] = button;
-                list.appendChild(button);
-            });
-
-            updateModeButtons(buttons);
-            modalApi.body.appendChild(current);
-            modalApi.body.appendChild(list);
-            focusFallback([buttons[get720pMode()], modalApi.closeBtn]);
+        window.__getResetVidaaTweaksLabel = function() {
+            return Date.now() < resetVidaaTweaksArmedUntil ? 'Confirm Reset VIDAA Tweaks' : 'Reset VIDAA Tweaks';
         };
 
-        window.__resetVidaaTweaks = function() {
-            var cancelBtn = window.__createVidaaActionButton('Cancel', { id: 'vidaa-reset-tweaks-cancel-btn' });
-            var resetBtn = window.__createVidaaActionButton('Reset and Reload', { id: 'vidaa-reset-tweaks-apply-btn', danger: true });
-            var modalApi = window.__createVidaaModal({
-                id: 'vidaa-reset-tweaks-modal',
-                title: 'Reset VIDAA Tweaks',
-                width: '720px',
-                footerButtons: [cancelBtn, resetBtn]
-            });
-
-            modalApi.body.innerHTML = '<div style="font-family:PlusJakartaSans,sans-serif;font-size:0.95rem;line-height:1.55;color:rgba(255,255,255,0.74);">This clears this fork\'s saved tweak settings and reloads the app. Server URL is kept.</div>' +
-                '<div style="font-family:PlusJakartaSans,sans-serif;font-size:0.9rem;line-height:1.5;color:rgba(255,255,255,0.6);">It resets zoom mode, subtitle/audio tweaks, playback warnings, low-memory settings, stream stats, launcher prompts, and other `stremio_*` patch keys.</div>';
-
-            cancelBtn.onclick = function() { removeModal('vidaa-reset-tweaks-modal'); };
-            resetBtn.onclick = function() {
-                try {
-                    var keys = [];
-                    for (var i = 0; i < localStorage.length; i++) {
-                        var key = localStorage.key(i);
-                        if (key && key.indexOf('stremio_') === 0 && !RESET_EXCLUDE_KEYS[key]) keys.push(key);
-                    }
-                    for (var j = 0; j < keys.length; j++) localStorage.removeItem(keys[j]);
-                    sessionStorage.removeItem('stremio_install_banner_dismissed_session');
-                } catch (e) {}
-                location.reload();
-            };
-            focusFallback([resetBtn, cancelBtn]);
+        window.__triggerResetVidaaTweaks = function() {
+            if (Date.now() < resetVidaaTweaksArmedUntil) {
+                disarmResetVidaaTweaks();
+                performResetVidaaTweaks();
+                return true;
+            }
+            resetVidaaTweaksArmedUntil = Date.now() + 10000;
+            if (resetVidaaTweaksTimer) clearTimeout(resetVidaaTweaksTimer);
+            resetVidaaTweaksTimer = setTimeout(disarmResetVidaaTweaks, 10050);
+            if (window.__showVidaaToast) {
+                window.__showVidaaToast('Press again to confirm reset', 2200);
+            }
+            return false;
         };
+        window.__resetVidaaTweaks = window.__triggerResetVidaaTweaks;
 
         window.addEventListener('hashchange', function() {
             refreshZoom('route-change');

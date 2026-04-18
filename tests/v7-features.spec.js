@@ -549,23 +549,30 @@ test.describe('Diagnostics', () => {
     expect(blob).toContain('"vidaaDetected": true');
   });
 
-  test('720p mode picker updates mode and reset keeps server url while clearing tweaks', async ({ page }) => {
+  test('720p mode cycles and reset keeps server url while clearing tweaks', async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => {
       localStorage.setItem('stremio_server_url', 'http://10.0.0.7:11470');
       localStorage.setItem('stremio_720p_mode', 'ui-only');
       localStorage.setItem('stremio_stream_stats', 'true');
     });
-    await page.evaluate(() => window.__show720pModePicker());
-    await expect(page.locator('#vidaa-720p-mode-modal')).toBeVisible();
-    await page.locator('[data-720p-mode="off"]').click();
+    const modeAfterFirstCycle = await page.evaluate(() => window.__cycle720pMode());
+    expect(modeAfterFirstCycle).toBe('ui-and-player');
+    const modeAfterSecondCycle = await page.evaluate(() => window.__cycle720pMode());
+    expect(modeAfterSecondCycle).toBe('off');
 
-    const modeAfterClick = await page.evaluate(() => window.__get720pMode());
-    expect(modeAfterClick).toBe('off');
+    const resetState = await page.evaluate(() => {
+      const first = window.__triggerResetVidaaTweaks();
+      return {
+        first,
+        label: window.__getResetVidaaTweaksLabel()
+      };
+    });
+    expect(resetState.first).toBe(false);
+    expect(resetState.label).toContain('Confirm');
 
     await page.evaluate(() => {
-      window.__resetVidaaTweaks();
-      document.querySelector('#vidaa-reset-tweaks-apply-btn').click();
+      window.__triggerResetVidaaTweaks();
     });
     await page.waitForLoadState('load');
     await page.waitForTimeout(250);
@@ -655,7 +662,6 @@ test.describe('Diagnostics', () => {
       localStorage.setItem('stremio_auto_rebuffer', 'false');
       localStorage.setItem('stremio_playback_warning', 'false');
       window.__applyPlaybackSafeMode();
-      document.querySelector('#vidaa-safe-mode-apply-btn').click();
     });
     await page.waitForLoadState('load');
     await page.waitForTimeout(250);
