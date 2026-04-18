@@ -212,8 +212,10 @@
     window.__DV_PROFILE7_DETECTED__ = false;
     window.__STREAM_INFO__ = {};
 
-    // Default to ON for new users — set the key if it doesn't exist yet
-    try { if (localStorage.getItem(WARN_KEY) === null) localStorage.setItem(WARN_KEY, 'true'); } catch(e) {}
+    // Default OFF — do not block streams that look stalled, many eventually recover
+    // and the full-screen overlay blocks the TV remote from navigating elsewhere.
+    // Users who want the codec/stall helper can opt in via Settings > VIDAA > Playback Warning.
+    try { if (localStorage.getItem(WARN_KEY) === null) localStorage.setItem(WARN_KEY, 'false'); } catch(e) {}
 
     function isWarningEnabled() {
         try { return localStorage.getItem(WARN_KEY) === 'true'; } catch(e) { return false; }
@@ -398,9 +400,9 @@
             id: 'playback-warning-toggle',
             type: 'toggle',
             label: 'Playback Warning',
-            description: 'Shows a warning overlay when playback stalls (codec/container issues). Disable if your TV handles all formats fine.',
+            description: 'Shows a helper overlay when playback stalls (offers native player / transcode / go-back). OFF by default — most streams eventually recover and the overlay blocks the remote.',
             lsKey: WARN_KEY,
-            defaultValue: true
+            defaultValue: false
         });
     }, 200);
 })();
@@ -502,7 +504,7 @@
     setInterval(function() {
         var hash = window.location.hash || '';
         if (hash.indexOf('#/player/') !== 0) {
-            if (indicator) indicator.style.display = 'none';
+            if (indicator) { indicator.style.display = 'none'; indicator.style.opacity = '0'; }
             return;
         }
         if (!indicator) createIndicator();
@@ -536,7 +538,9 @@
         try { if (video.buffered.length) bufferSec = video.buffered.end(video.buffered.length - 1) - video.currentTime; } catch(e) {}
         var dotColor = bufferSec > 30 ? '#4ade80' : bufferSec > 10 ? '#fbbf24' : '#f87171';
         el.innerHTML = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';margin-right:6px;vertical-align:middle;"></span>' + esc(label);
-        if (el.style.display === 'none') showIndicator();
+        // Only refresh content — do NOT auto-show. The indicator is shown on Red button
+        // press (in player with stats disabled) or on any keydown in player. This prevents
+        // the icon from being stuck visible permanently.
     }, 3000);
 })();
 </script>
@@ -545,16 +549,24 @@
 (function() {
     var healthOverlay = null;
 
+    function showToast(msg, bg, ms) {
+        var t = document.createElement('div');
+        t.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:' + (bg || 'rgba(0,0,0,0.88)') + ';color:white;padding:16px 28px;border-radius:10px;font-size:1.05rem;font-family:PlusJakartaSans,sans-serif;z-index:100000;pointer-events:none;text-align:center;max-width:500px;';
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(function() { t.remove(); }, ms || 2500);
+    }
+
     document.addEventListener('keydown', function(e) {
         var code = e.keyCode;
 
-        // Red (403) — toggle quality indicator
-        // Skip if Stream Stats overlay is enabled and we're in the player
-        // (Red is used for stats toggle there instead)
+        // Red (403) — toggle quality indicator (only outside the player).
+        // Inside the player the Stream Stats overlay owns Red (registered on window).
+        // Outside the player, show the quality indicator even though the interval
+        // normally only renders it in player — just to confirm the button is wired.
         if (code === 403) {
             var inPlayer = (window.location.hash || '').indexOf('#/player/') !== -1;
-            var statsEnabled = localStorage.getItem('stremio_stream_stats') !== 'false';
-            if (!(inPlayer && statsEnabled)) {
+            if (!inPlayer) {
                 var qi = document.getElementById('quality-indicator');
                 if (qi) qi.style.display = qi.style.display === 'none' ? 'block' : 'none';
             }
@@ -564,25 +576,48 @@
         if (code === 404) {
             if (healthOverlay) { healthOverlay.remove(); healthOverlay = null; return; }
             var h = window.__SERVER_HEALTH__ || {};
+            var url = window.__STREMIO_SERVER_URL__ || 'default';
+            var isDefault = !url || url === 'default' || url === 'http://127.0.0.1:11470';
+            var statusColor, statusText;
+            if (h.status === 'online') { statusColor = '#4ade80'; statusText = 'online'; }
+            else if (isDefault) { statusColor = '#94a3b8'; statusText = 'not configured'; }
+            else { statusColor = '#f87171'; statusText = h.status || 'offline'; }
             healthOverlay = document.createElement('div');
-            healthOverlay.style.cssText = 'position:fixed;bottom:60px;right:14px;background:rgba(0,0,0,0.85);color:white;padding:16px 20px;border-radius:10px;font-size:13px;z-index:99999;font-family:monospace;min-width:220px;backdrop-filter:blur(4px);';
+            healthOverlay.style.cssText = 'position:fixed;bottom:60px;right:14px;background:rgba(0,0,0,0.9);color:white;padding:16px 20px;border-radius:10px;font-size:13px;z-index:99999;font-family:monospace;min-width:260px;backdrop-filter:blur(4px);';
+            var note = isDefault && h.status !== 'online'
+                ? '<div style="margin-top:8px;color:rgba(255,255,255,0.6);font-size:11px;line-height:1.4;">Streaming server is optional. Real-Debrid users do not need one.</div>'
+                : '';
             healthOverlay.innerHTML = '<div style="font-weight:700;margin-bottom:8px;font-size:14px;">Server Health</div>'
-                + '<div>Status: <span style="color:' + (h.status === 'online' ? '#4ade80' : '#f87171') + ';">' + esc(h.status || 'unknown') + '</span></div>'
+                + '<div>Status: <span style="color:' + statusColor + ';">' + esc(statusText) + '</span></div>'
                 + '<div>Latency: ' + (h.latency ? h.latency + 'ms' : 'N/A') + '</div>'
                 + '<div>Version: ' + esc(h.version || 'N/A') + '</div>'
-                + '<div>URL: ' + esc(window.__STREMIO_SERVER_URL__ || 'default') + '</div>';
+                + '<div>URL: ' + esc(url) + '</div>'
+                + note;
             document.body.appendChild(healthOverlay);
-            setTimeout(function() { if (healthOverlay) { healthOverlay.remove(); healthOverlay = null; } }, 8000);
+            setTimeout(function() { if (healthOverlay) { healthOverlay.remove(); healthOverlay = null; } }, 10000);
         }
 
-        // Blue (406) — force transcode current stream (reloads player)
+        // Blue (406) — force transcode current stream (reloads player).
+        // Only useful if a streaming server is configured — otherwise show a toast.
         if (code === 406) {
             var ph = window.location.hash || '';
-            if (ph.indexOf('#/player/') === 0) {
-                window.__FORCE_TRANSCODE__ = true;
-                console.log('[remote] Force transcode enabled, reloading stream');
+            if (ph.indexOf('#/player/') !== 0) return;
+            var srvUrl = window.__STREMIO_SERVER_URL__ || '';
+            var serverReady = srvUrl && srvUrl !== 'http://127.0.0.1:11470';
+            var srvOnline = window.__SERVER_HEALTH__ && window.__SERVER_HEALTH__.status === 'online';
+            if (!serverReady || !srvOnline) {
+                showToast('Force transcode needs a streaming server.\nCheck Settings > Server.', 'rgba(180,60,60,0.92)', 3500);
+                return;
+            }
+            window.__FORCE_TRANSCODE__ = true;
+            console.log('[remote] Force transcode enabled, reloading stream');
+            showToast('Forcing transcode...', null, 1500);
+            try {
                 window.location.hash = '#/home';
-                setTimeout(function() { window.location.hash = ph; }, 100);
+                setTimeout(function() { window.location.hash = ph; }, 200);
+            } catch(err) {
+                console.error('[remote] Force transcode reload failed:', err.message);
+                showToast('Could not reload stream', 'rgba(180,60,60,0.92)', 2500);
             }
         }
 
@@ -628,13 +663,16 @@
 </script>
 <script>
 // Native player handoff — hand stream URL to VIDAA system player
-// The native player has full hardware DV decode with metadata intact
+// The native player has full hardware DV decode with metadata intact.
+// Check omi_platform lazily — on some VIDAA firmwares it's injected after page load,
+// so an early-return at script init time silently disables the Yellow button forever.
 (function() {
-    var hasNative = false;
-    try { hasNative = typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) {}
-    if (!hasNative) return;
+    function hasNative() {
+        try { return typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) { return false; }
+    }
 
     window.__launchNativePlayer = function(url) {
+        if (!hasNative()) { console.log('[native] omi_platform unavailable — native player not supported on this device'); return false; }
         if (!url) {
             var video = document.querySelector('video');
             url = video ? video.currentSrc || video.src : null;
@@ -650,33 +688,42 @@
             {type: 'playVideo', url: url, mimeType: 'video/mp4', title: 'Stremio'}
         ];
 
+        var anySent = false;
         for (var i = 0; i < messages.length; i++) {
             try {
                 omi_platform.sendPlatformMessage(JSON.stringify(messages[i]));
                 console.log('[native] Sent:', messages[i].type);
+                anySent = true;
             } catch(e) {
                 console.log('[native] Failed:', messages[i].type, e.message);
             }
         }
-        return true;
+        return anySent;
     };
 
-    // Yellow button (405) — launch native player with current stream
+    // Yellow button (405) — launch native player with current stream.
+    // Always bind; check omi_platform at press time so later-injected APIs still work.
     document.addEventListener('keydown', function(e) {
-        if (e.keyCode === 405) {
-            var hash = window.location.hash || '';
-            if (hash.indexOf('#/player/') === 0) {
-                var launched = window.__launchNativePlayer();
-                if (launched) {
-                    // Show brief notification
-                    var toast = document.createElement('div');
-                    toast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.9);color:white;padding:20px 40px;border-radius:12px;font-size:1.2rem;font-family:PlusJakartaSans,sans-serif;z-index:100000;pointer-events:none;';
-                    toast.textContent = 'Opening in native player...';
-                    document.body.appendChild(toast);
-                    setTimeout(function() { toast.remove(); }, 3000);
-                }
-            }
+        if (e.keyCode !== 405) return;
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/player/') !== 0) return;
+
+        var toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.9);color:white;padding:20px 40px;border-radius:12px;font-size:1.2rem;font-family:PlusJakartaSans,sans-serif;z-index:100000;pointer-events:none;text-align:center;max-width:500px;';
+
+        if (!hasNative()) {
+            toast.textContent = 'Native player not available on this device';
+            toast.style.background = 'rgba(180,60,60,0.92)';
+            document.body.appendChild(toast);
+            setTimeout(function() { toast.remove(); }, 3000);
+            return;
         }
+
+        var launched = window.__launchNativePlayer();
+        toast.textContent = launched ? 'Opening in native player...' : 'Native player could not open this stream';
+        if (!launched) toast.style.background = 'rgba(180,60,60,0.92)';
+        document.body.appendChild(toast);
+        setTimeout(function() { toast.remove(); }, 3000);
     });
 })();
 </script>
@@ -786,25 +833,68 @@
         console.log('[vidaa] AddInsecureDomain not available:', e.message);
     }
 
-    // Collect device capabilities
+    // Normalize a VIDAA capability value to a friendly label.
+    // Different firmwares return various shapes: true/false, "0"/"1", 0/1, strings, objects.
+    function normaliseCap(v) {
+        if (v === undefined || v === null) return 'unknown';
+        if (typeof v === 'boolean') return v ? 'yes' : 'no';
+        if (typeof v === 'number') return v ? 'yes' : 'no';
+        if (typeof v === 'string') {
+            var s = v.trim().toLowerCase();
+            if (s === '1' || s === 'true' || s === 'yes' || s === 'supported') return 'yes';
+            if (s === '0' || s === 'false' || s === 'no' || s === 'unsupported' || s === '') return 'no';
+            return v;
+        }
+        return v;
+    }
+    window.__normaliseVidaaCap = normaliseCap;
+
+    // Collect device capabilities. Try multiple APIs per feature — different
+    // firmware builds expose different function names, and on some projector
+    // builds the older Hisense_* aliases return the right answer while the
+    // newer camelCase/omi_ variants throw.
     try {
         window.__VIDAA_CAPS__ = {};
-        try { window.__VIDAA_CAPS__.hdrInfo = Hisense_GetSupportForHDRInfo(); } catch(e) {}
-        try { window.__VIDAA_CAPS__.pictureInfo = Hisense_GetPictureInfo(); } catch(e) {}
-        try { window.__VIDAA_CAPS__.dolbyAtmos = Hisense_GetSupportForDolbyAtmos(); } catch(e) {}
-        try { window.__VIDAA_CAPS__.chipset = Hisense_GetChipSetName(); } catch(e) {}
-        try { window.__VIDAA_CAPS__.panelRes = Hisense_GetPanelResolution(); } catch(e) {}
-        try { window.__VIDAA_CAPS__.drmInfo = Hisense_GetDrmInfo(); } catch(e) {}
-        try { window.__VIDAA_CAPS__.model = Hisense_GetModelName(); } catch(e) {}
-        try { window.__VIDAA_CAPS__.firmware = Hisense_GetFirmWareVersion(); } catch(e) {}
-        try { window.__VIDAA_CAPS__.osVersion = Hisense_GetOSVersion(); } catch(e) {}
-        console.log('[vidaa] Device caps:', JSON.stringify(window.__VIDAA_CAPS__));
+        var caps = window.__VIDAA_CAPS__;
+
+        try { caps.hdrInfo = Hisense_GetSupportForHDRInfo(); } catch(e) {}
+        try { caps.pictureInfo = Hisense_GetPictureInfo(); } catch(e) {}
+
+        // Atmos detection — multiple paths, first non-empty answer wins.
+        var atmosRaw = undefined;
+        try { atmosRaw = Hisense_GetSupportForDolbyAtmos(); } catch(e) {}
+        if (atmosRaw === undefined) {
+            try {
+                var pic = caps.pictureInfo;
+                if (pic && (pic.dolbyAtmos !== undefined || pic.atmos !== undefined)) {
+                    atmosRaw = pic.dolbyAtmos !== undefined ? pic.dolbyAtmos : pic.atmos;
+                }
+            } catch(e) {}
+        }
+        if (atmosRaw === undefined) {
+            try {
+                var hdr = caps.hdrInfo;
+                if (hdr && (hdr.atmos !== undefined || hdr.dolbyAtmos !== undefined)) {
+                    atmosRaw = hdr.atmos !== undefined ? hdr.atmos : hdr.dolbyAtmos;
+                }
+            } catch(e) {}
+        }
+        caps.dolbyAtmosRaw = atmosRaw;
+        caps.dolbyAtmos = normaliseCap(atmosRaw);
+
+        try { caps.chipset = Hisense_GetChipSetName(); } catch(e) {}
+        try { caps.panelRes = Hisense_GetPanelResolution(); } catch(e) {}
+        try { caps.drmInfo = Hisense_GetDrmInfo(); } catch(e) {}
+        try { caps.model = Hisense_GetModelName(); } catch(e) {}
+        try { caps.firmware = Hisense_GetFirmWareVersion(); } catch(e) {}
+        try { caps.osVersion = Hisense_GetOSVersion(); } catch(e) {}
+        console.log('[vidaa] Device caps:', JSON.stringify(caps));
     } catch(e) {}
 
     // Register observers for real-time video state
     try {
         window.__VIDAA_STATE__ = {};
-        var keys = ['dolbyVision', 'hdr', 'videoCodec', 'audioCodec', 'playerState', 'mediaState', 'resolution'];
+        var keys = ['dolbyVision', 'hdr', 'videoCodec', 'audioCodec', 'playerState', 'mediaState', 'resolution', 'dolbyAtmos', 'atmos'];
         for (var j = 0; j < keys.length; j++) {
             (function(key) {
                 try {
@@ -856,21 +946,37 @@
         btn.onclick = function() {
             var appUrl = 'https://noobygains.github.io/stremio-vidaa-tv/';
             var iconUrl = appUrl + 'icon.png';
+            var appId = 'stremio-vidaa';
             try {
-                Hisense_installApp('stremio-vidaa', 'Stremio', iconUrl, iconUrl, iconUrl, appUrl, 'store', function(status) {
+                Hisense_installApp(appId, 'Stremio', iconUrl, iconUrl, iconUrl, appUrl, 'store', function(status) {
                     if (status === 0) {
                         sessionStorage.setItem(SESSION_DISMISS_KEY, '1');
                         try { localStorage.setItem(LAST_SUCCESS_KEY, String(Date.now())); } catch (e) {}
-                        text.textContent = 'Install request accepted. Restart your TV. If Stremio does not appear, revisit this page and try again.';
+                        // Tell the Hisense launcher to refresh — the official Stremio
+                        // installer does this and without it many firmware builds report
+                        // install success but never actually show the new icon.
+                        try {
+                            var refreshMsg = {
+                                type: 'APPMessage', MsgType: 'appControl', action: 'updateAppState',
+                                source: 'browser', startAppType: 0x2,
+                                param: { event: 'AllAppsUpdate', SubModuleName: 'AllApps', startFrom: '', appInfo: appId }
+                            };
+                            if (window.omi_platform && typeof window.omi_platform.sendPlatformMessage === 'function') {
+                                window.omi_platform.sendPlatformMessage(JSON.stringify(refreshMsg));
+                            } else if (window.opera_omi && typeof window.opera_omi.sendPlatformMessage === 'function') {
+                                window.opera_omi.sendPlatformMessage(JSON.stringify(refreshMsg));
+                            }
+                        } catch(refreshErr) { console.log('[install] launcher refresh failed:', refreshErr.message); }
+                        text.textContent = 'Install requested. Fully restart your TV (unplug 10s). If nothing shows in your launcher — common on projectors and newer firmware — just bookmark this page in the TV Browser, it works the same.';
                         btn.style.display = 'none';
-                        setTimeout(function() { banner.remove(); }, 8000);
+                        setTimeout(function() { banner.remove(); }, 12000);
                     } else {
-                        text.textContent = 'Install failed (code ' + status + '). Try again.';
+                        text.textContent = 'Install failed (code ' + status + '). Bookmark this page in the TV Browser instead.';
                     }
                 });
             } catch(e) {
-                text.textContent = 'Install not available from this domain.';
-                setTimeout(function() { banner.remove(); }, 5000);
+                text.textContent = 'Install not available from this domain. Bookmark this page in the TV Browser and open it from there.';
+                setTimeout(function() { banner.remove(); }, 7000);
             }
         };
         banner.appendChild(btn);
@@ -4054,13 +4160,65 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
         retries = 0;
     }
 
+    function showRecoveryToast(video) {
+        // Non-blocking corner toast with action buttons — user is never trapped.
+        var existing = document.getElementById('__rebuffer-toast');
+        if (existing) existing.remove();
+        var toast = document.createElement('div');
+        toast.id = '__rebuffer-toast';
+        toast.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);' +
+            'background:rgba(0,0,0,0.9);color:#fff;padding:12px 18px;border-radius:10px;' +
+            'font-size:14px;z-index:99999;display:flex;flex-direction:column;gap:10px;' +
+            'font-family:PlusJakartaSans,sans-serif;max-width:440px;text-align:center;';
+
+        var msg = document.createElement('div');
+        msg.textContent = 'Playback keeps stalling. You can pick another stream — or try one of these.';
+        toast.appendChild(msg);
+
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:8px;justify-content:center;flex-wrap:wrap;';
+
+        function mkBtn(label, color) {
+            var b = document.createElement('button');
+            b.textContent = label;
+            b.style.cssText = 'background:' + color + ';color:#fff;border:none;border-radius:8px;' +
+                'padding:8px 14px;font-size:13px;font-family:inherit;font-weight:600;cursor:pointer;';
+            b.setAttribute('tabindex', '0');
+            b.onfocus = function() { this.style.outline = '2px solid #fff'; };
+            b.onblur = function() { this.style.outline = 'none'; };
+            return b;
+        }
+
+        var hasNative = false;
+        try { hasNative = typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) {}
+
+        if (hasNative) {
+            var nativeBtn = mkBtn('Native Player', '#7b5bf5');
+            nativeBtn.onclick = function() {
+                toast.remove();
+                if (window.__launchNativePlayer) window.__launchNativePlayer();
+            };
+            row.appendChild(nativeBtn);
+        }
+
+        var dismiss = mkBtn('Keep Trying', 'rgba(255,255,255,0.12)');
+        dismiss.onclick = function() { toast.remove(); };
+        row.appendChild(dismiss);
+
+        toast.appendChild(row);
+        document.body.appendChild(toast);
+        // Auto-hide after 12s
+        setTimeout(function() { if (toast.parentNode) toast.remove(); }, 12000);
+    }
+
     function attemptRebuffer(video) {
         retries++;
         log('Stall detected (retry', retries, '/ ' + MAX_RETRIES + ')');
 
         if (retries > MAX_RETRIES) {
-            log('Max retries reached — showing toast');
-            showToast('Playback stalled. Try a lower quality stream.');
+            log('Max retries reached — offering recovery options');
+            showRecoveryToast(video);
+            // Reset so we try again if the user keeps waiting — never leave them stuck.
             resetStall();
             return;
         }
@@ -4072,9 +4230,9 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
                 log('Seeking forward 1 second to', seekTarget);
                 video.currentTime = seekTarget;
             } else {
-                // Pause and re-seek to current position to trigger re-buffer
+                // Pause and re-seek to current position to trigger re-buffer.
                 // Avoid video.load() — it resets the source entirely, which
-                // kills torrent streams and forces a full re-download
+                // kills torrent streams and forces a full re-download.
                 log('Pause + re-seek to trigger rebuffer');
                 var pos = video.currentTime;
                 video.pause();

@@ -521,6 +521,42 @@
   }
 
   /* ---------- install ---------- */
+
+  /* After a successful install, ask the Hisense launcher to refresh its app list
+   * immediately. The official Stremio installer does this via an APPMessage /
+   * AllAppsUpdate sent over omi_platform.sendPlatformMessage. Without this
+   * message the launcher may not see the newly installed app until a full
+   * reboot — and on some firmware, never at all. Mirrors the pattern from
+   * github.com/Stremio/stremio-hisense-install. */
+  function refreshAppsOnHisenseUI(appInfo) {
+    var msg = {
+      type: "APPMessage",
+      MsgType: "appControl",
+      action: "updateAppState",
+      source: "browser",
+      startAppType: 0x2,
+      param: {
+        event: "AllAppsUpdate",
+        SubModuleName: "AllApps",
+        startFrom: "",
+        appInfo: appInfo
+      }
+    };
+    var sent = false;
+    try {
+      if (window.omi_platform && typeof window.omi_platform.sendPlatformMessage === "function") {
+        window.omi_platform.sendPlatformMessage(JSON.stringify(msg));
+        sent = true;
+      } else if (window.opera_omi && typeof window.opera_omi.sendPlatformMessage === "function") {
+        window.opera_omi.sendPlatformMessage(JSON.stringify(msg));
+        sent = true;
+      }
+    } catch (e) {
+      diagState.install.refreshError = e.message;
+    }
+    diagState.install.launcherRefreshSent = sent;
+  }
+
   function doInstall() {
     if (!isVidaa) return;
     disableButtons(true);
@@ -546,10 +582,23 @@
             diagState.install.callbackCode = result;
             if (result === 0) {
               diagState.install.callbackStatus = "accepted";
-              setStatus("Install request accepted. Restart your TV. If Stremio does not appear, reopen this page or try Method 2.", "success");
+              /* Tell the launcher to refresh — without this, many firmware
+               * revisions report install success but never show the icon. */
+              refreshAppsOnHisenseUI(APP_ID);
+              setStatus(
+                "Install request accepted \u2014 the TV firmware reported success, and the launcher has been asked to refresh. " +
+                "Fully restart your TV now (not standby \u2014 unplug for 10 seconds if needed). " +
+                "If Stremio still does not show in the launcher after a full restart, your firmware is silently blocking third-party launcher entries. " +
+                "Just bookmark noobygains.github.io/stremio-vidaa-tv in the TV Browser and open it from there (Method 1). Everything works the same.",
+                "success"
+              );
             } else {
               diagState.install.callbackStatus = "failed";
-              setStatus("Install callback returned code: " + result, "error");
+              setStatus(
+                "Install callback returned code " + result + ". Your TV refused to add the app to its launcher. " +
+                "Use Method 1 instead: open the TV Browser and go to noobygains.github.io/stremio-vidaa-tv",
+                "error"
+              );
             }
             renderDiagnostics();
             disableButtons(false);

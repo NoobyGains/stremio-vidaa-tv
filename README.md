@@ -2,10 +2,10 @@
   <img src="logo.png" alt="Stremio" width="120" />
 </p>
 
-<h1 align="center">Stremio for VIDAA TV</h1>
+<h1 align="center">Stremio for Hisense Projectors &amp; VIDAA TVs</h1>
 
 <p align="center">
-  The full Stremio experience on Hisense VIDAA TVs. Built on the Theater v1.9.2 TV frontend with the latest v5 WASM core, reverse-engineered VIDAA integration, and one-click installation.
+  Built because the official <strong>Stremio Lite</strong> on Hisense projectors is broken and feature-limited. A full Stremio experience that actually works on PX3-Pro, M2 Pro, C2, C2 Mini, and any VIDAA TV.
 </p>
 
 <p align="center">
@@ -18,25 +18,50 @@
 
 ---
 
-## What is this?
+## Why this exists
 
-Stremio dropped official support for the TV frontend. The official **Stremio Lite** in the VIDAA app store is limited: no community addons, no transcoding, no streaming server support. This project is the full Stremio experience rebuilt for VIDAA TVs.
+If you own a **Hisense Laser projector** (PX3-Pro, PX1-Pro, PX1HE, M2 Pro, Smart Mini C2, Smart Mini C2 Pro, C2 Ultra), you already know the story:
 
-It takes the original Stremio Theater v1.9.2 frontend (built for D-pad navigation and 10-foot TV UI) and grafts the latest stremio-core-web v5 WASM engine onto it. Every webpack chunk was hand-merged and tested on real hardware. On top of that, deep reverse engineering of the VIDAA browser environment enables native integration that no other build offers.
+- The official **Stremio Lite** in the VIDAA app store buffers forever after 30–40 seconds, crashes on updates, and has no community addons, no transcoding, and no streaming server support.
+- Hisense has effectively abandoned Stremio on these devices. The native app store barely updates for projectors.
+- Most "install Stremio on Hisense" guides only cover retail TVs and silently fail on projectors because the projector firmware has **extra install restrictions** retail TVs don't.
+
+This project was originally built to get Stremio working on a **Hisense PX3-Pro Ultra Short Throw Triple Laser 4K Projector**. It grew because users of other projectors and VIDAA TVs asked for help, so everything is designed to work on both.
+
+## What you get
+
+- **Full Stremio**, not Lite — community addons (Torrentio, etc.), streaming server support, transcoding, external debrid services all work.
+- **Modern stremio-core v5 WASM engine** grafted onto the original Stremio Theater v1.9.2 TV frontend (built for D-pad navigation and 10-foot viewing distance — perfect for projectors).
+- **Projector-first defaults** — no full-screen error overlays blocking your remote, large UI sizing, Method 2 (bookmark) as the reliable install path.
+- **Every custom feature is a toggle** in Settings &gt; VIDAA so you can turn anything on or off per device.
+- **Reverse-engineered VIDAA integration** for native player handoff, hardware codec detection, trusted-domain registration, and launcher installation.
 
 ## Requirements
 
-- **Hisense or Toshiba TV** running **VIDAA OS**
-- A **Stremio account** ([stremio.com](https://www.stremio.com/), free)
-- **Real-Debrid** or similar debrid service (recommended)
+- A **Hisense projector** running VIDAA OS, OR a **Hisense / Toshiba / Sharp / AKAI TV** running VIDAA OS.
+- A **Stremio account** ([stremio.com](https://www.stremio.com/), free).
+- **Real-Debrid** or similar debrid service (recommended — makes most streams play natively with no streaming server needed).
 
-That's it. No streaming server needed for most users. If you use Real-Debrid with Torrentio, streams are direct H.264/HEVC links that your TV plays natively.
+No streaming server required for most users. With Real-Debrid + Torrentio, streams are direct H.264/HEVC links your TV/projector plays natively.
 
 ## Installation
 
-### Method 1: One-Click Installer
+**Projector owners: use Method 1 (bookmark). It works everywhere and takes 30 seconds.** The installer (Method 2) only adds a permanent launcher icon on certain retail TVs — on projectors and most newer firmware, the install API silently refuses even when it reports success. The bookmark version is identical, just launched from the TV Browser instead of the launcher.
 
-Requires a PC on the same network as your TV. No Python dependencies needed beyond the standard library.
+### Method 1: Bookmark in the TV Browser (works on everything)
+
+1. On your TV/projector, open the **Internet Browser** (Home &gt; Apps &gt; "Browser" or the globe icon — check **All Apps** if you don't see it, some firmware hides it by default).
+2. Go to:
+   ```
+   https://noobygains.github.io/stremio-vidaa-tv/
+   ```
+3. Bookmark the page. Open it from the bookmark any time you want to use Stremio.
+
+That's it. The app caches itself via a Service Worker so it launches instantly after the first load.
+
+### Method 2: One-Click Installer (retail TVs only — not reliable on projectors)
+
+Adds a permanent launcher icon. Requires a PC on the same network. Only works on some retail TVs; on projectors and newer VIDAA builds the firmware accepts the install call but never actually adds the icon, so just use Method 1 there.
 
 1. Download and run the installer:
    ```bash
@@ -44,25 +69,13 @@ Requires a PC on the same network as your TV. No Python dependencies needed beyo
    cd stremio-vidaa-tv/installer
    python server.py
    ```
-2. On your **TV**: go to **Settings > Network > DNS** and set it to the IP shown by the script
-3. On your **TV**: open the **Internet Browser** (Home > Apps > look for "Browser" or the globe icon, check "All Apps" if you don't see it) and go to `https://vidaahub.com`
-4. Press **Install Stremio**
-5. Revert DNS to automatic and restart your TV
-6. Stremio appears in your app launcher permanently
+2. On your **TV**: go to **Settings &gt; Network &gt; DNS** and set it to the IP shown by the script.
+3. On your **TV**: open the **Internet Browser** and go to `https://vidaahub.com`.
+4. Press **Install Stremio**.
+5. Revert DNS to automatic and fully restart your TV (unplug for 10 seconds if needed).
+6. If Stremio appears in the launcher — great. If not, your firmware blocks launcher installation; fall back to Method 1.
 
 The installer only spoofs `vidaahub.com`, forwards normal DNS requests upstream, and serves the install UI/icons locally to avoid GitHub Pages lookups during installation.
-If your TV reports success but the launcher entry does not appear after a full restart, your firmware likely blocks launcher installation. In that case use **Method 2** instead.
-
-### Method 2: Direct URL
-
-If you already have access to the TV browser:
-
-1. On your TV, open the **Internet Browser** (Home > Apps > look for "Browser" or the globe icon)
-2. Navigate to:
-   ```
-   https://noobygains.github.io/stremio-vidaa-tv/
-   ```
-3. The app loads and will prompt you to install to your launcher on first run
 
 ### Method 3: Self-hosted
 
@@ -203,10 +216,13 @@ These were already in the build before the above patches:
 
 ## Troubleshooting
 
+> **On projectors, Method 2 is the reliable path.** Most current Hisense projectors (PX3-Pro, M2 Pro, C2, C2 Mini, Smart Mini C2) silently drop `Hisense_installApp` even when it returns success — the launcher icon never appears no matter how many times you restart. Just bookmark `noobygains.github.io/stremio-vidaa-tv` in the TV's Internet Browser and open it from there. It works identically to the installed version.
+
 | Problem | Solution |
 |---|---|
-| **Installer: "Install" button does nothing** | Enable Developer Mode on your TV: Settings > System > About > press **1234** on the remote > toggle Developer Mode on. Make sure the installer script is still running on your PC. |
-| **Installer says success but no launcher app appears** | Some newer VIDAA firmwares/projectors appear to block `Hisense_installApp()` even when it returns success. Reboot fully once, then fall back to **Method 2** if nothing appears. |
+| **Installer: "Install" button does nothing** | You need Developer Mode. Normally: Settings > System > About > press **1234** on the remote. **Your projector remote has no number buttons?** See "No number buttons on your remote" below. |
+| **Installer says success but no launcher app appears** | This is the firmware-level silent-drop on current Hisense projectors and newer VIDAA builds — not something we can fix. Skip the launcher, use **Method 2** (bookmark in the TV Browser). |
+| **No number buttons on your remote (projectors, M2/C2/PX3-Pro)** | Try in this order: (1) Install **RemoteNow** on your phone — its virtual numpad enters `1234` on the About screen; (2) Check **Settings > System > Developer Options** directly — some newer firmware has the toggle without needing `1234`; (3) Try the hidden key sequence: **Home ×3, Up ×2, Right, Left, Right, Left, Right**; (4) Plug in a USB keyboard and type `1234`. If none of that works, skip Developer Mode entirely and use Method 2. |
 | **Can't find the browser on TV** | The Internet Browser may be hidden. Go to Home > Apps > All Apps and look for "Browser" or a globe icon. |
 | **"Server Offline" in Settings** | Your streaming server must be running on a device on the same network. Test by visiting `http://<server-ip>:11470/heartbeat` in a browser. Most Real-Debrid users don't need a server at all. |
 | **Black screen during playback** | Could be: DV content in MP4 container (use MKV sources instead), content above 4K resolution, or an unsupported codec. The app detects stalled playback and offers options. |
