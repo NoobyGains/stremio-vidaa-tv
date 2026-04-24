@@ -614,7 +614,7 @@
                             onClick: () => window.dispatchEvent(new Event("quit"))
                         }]
                     }, {
-                        label: "VIDAA",
+                        label: "STREMIO TV",
                         icon: "about",
                         options: (function() {
                             // Use g.animations() as reactive dependency — same signal
@@ -625,22 +625,58 @@
                                 g.setAnimations(!a);
                                 setTimeout(function() { g.setAnimations(a); }, 50);
                             }
+                            function readBool(lsKey, defaultOn) {
+                                return defaultOn ? localStorage.getItem(lsKey) !== 'false' : localStorage.getItem(lsKey) === 'true';
+                            }
+                            function writeBool(lsKey, value) {
+                                localStorage.setItem(lsKey, String(value));
+                            }
+                            function notifyToggle(lsKey, value) {
+                                if (window.__vidaaSettingsItems) {
+                                    var c = window.__vidaaSettingsItems.find(function(i) { return i.lsKey === lsKey; });
+                                    if (c && c.onToggle) c.onToggle(value);
+                                }
+                            }
                             function makeToggle(label, lsKey, extra, defaultOn) {
                                 return {
                                     label: label,
                                     options: [{
-                                        checked: () => { g.animations(); return defaultOn ? localStorage.getItem(lsKey) !== 'false' : localStorage.getItem(lsKey) === 'true'; },
+                                        checked: () => { g.animations(); return readBool(lsKey, defaultOn); },
                                         onClick: () => {
-                                            var now = defaultOn ? localStorage.getItem(lsKey) === 'false' : localStorage.getItem(lsKey) !== 'true';
-                                            localStorage.setItem(lsKey, String(now));
+                                            var now = !readBool(lsKey, defaultOn);
+                                            writeBool(lsKey, now);
                                             forceRerender();
                                             if (extra) extra(now);
-                                            if (window.__vidaaSettingsItems) {
-                                                var c = window.__vidaaSettingsItems.find(function(i) { return i.lsKey === lsKey; });
-                                                if (c && c.onToggle) c.onToggle(now);
-                                            }
+                                            notifyToggle(lsKey, now);
                                         }
                                     }]
+                                };
+                            }
+                            function getAudioDelay() {
+                                var v = parseInt(localStorage.getItem('stremio_audio_delay'), 10);
+                                if (isNaN(v)) return 0;
+                                return Math.max(-500, Math.min(500, v));
+                            }
+                            function setAudioDelay(ms) {
+                                localStorage.setItem('stremio_audio_delay', String(ms));
+                                forceRerender();
+                            }
+                            function makeAudioDelayOffset() {
+                                var values = [-250, -150, -75, 0, 75, 150, 250, 500];
+                                return {
+                                    label: () => {
+                                        g.animations();
+                                        var d = getAudioDelay();
+                                        return "Audio Offset: " + (d >= 0 ? "+" : "") + d + "ms";
+                                    },
+                                    disabled: () => !readBool('stremio_audio_delay_enabled', false),
+                                    options: values.map(function(ms) {
+                                        return {
+                                            label: (ms >= 0 ? "+" : "") + ms + "ms",
+                                            selected: () => { g.animations(); return getAudioDelay() === ms; },
+                                            onClick: () => setAudioDelay(ms)
+                                        };
+                                    })
                                 };
                             }
                             function makeAction(labelOrGetter, onClick, disabled) {
@@ -656,8 +692,14 @@
                                 };
                             }
                             return [
+                                makeToggle("Quiet Player Mode", "stremio_quiet_player"),
+                                makeToggle("Auto Native Player for MKV", "stremio_auto_native_player_mkv"),
+                                makeToggle("Auto Native Player (all streams)", "stremio_auto_native_player"),
                                 makeToggle("Force Stereo", "stremio_force_stereo"),
-                                makeToggle("Audio Delay", "stremio_audio_delay_enabled"),
+                                makeToggle("Audio Delay", "stremio_audio_delay_enabled", function(now) {
+                                    if (!now) setAudioDelay(0);
+                                }),
+                                makeAudioDelayOffset(),
                                 makeToggle("Auto-Play Stream", "stremio_autoplay_best"),
                                 makeToggle("Mark Season", "stremio_mark_season"),
                                 makeToggle("Subtitle Drift Fix", "stremio_sub_drift_fix"),

@@ -33,7 +33,7 @@ This project was originally built to get Stremio working on a **Hisense PX3-Pro 
 - **Full Stremio**, not Lite — community addons (Torrentio, etc.), streaming server support, transcoding, external debrid services all work.
 - **Modern stremio-core v5 WASM engine** grafted onto the original Stremio Theater v1.9.2 TV frontend (built for D-pad navigation and 10-foot viewing distance — perfect for projectors).
 - **Projector-first defaults** — no full-screen error overlays blocking your remote, large UI sizing, Method 2 (bookmark) as the reliable install path.
-- **Every custom feature is a toggle** in Settings &gt; VIDAA so you can turn anything on or off per device.
+- **Every custom feature is a toggle** in Settings &gt; STREMIO TV so you can turn anything on or off per device.
 - **Reverse-engineered VIDAA integration** for native player handoff, hardware codec detection, trusted-domain registration, and launcher installation.
 
 ## Requirements

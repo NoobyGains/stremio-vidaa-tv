@@ -222,7 +222,7 @@
 // - HEVC 4K 10-bit: plays fine
 // - AV1: not supported
 // NOTE: Other TVs may have different codec support — users can disable
-// the playback warning via Settings > VIDAA > Playback Warning
+// the playback warning via Settings > STREMIO TV > Playback Warning
 (function() {
     var WARN_KEY = 'stremio_playback_warning';
     window.__DV_PROFILE7_DETECTED__ = false;
@@ -230,7 +230,7 @@
 
     // Default OFF — do not block streams that look stalled, many eventually recover
     // and the full-screen overlay blocks the TV remote from navigating elsewhere.
-    // Users who want the codec/stall helper can opt in via Settings > VIDAA > Playback Warning.
+    // Users who want the codec/stall helper can opt in via Settings > STREMIO TV > Playback Warning.
     try { if (localStorage.getItem(WARN_KEY) === null) localStorage.setItem(WARN_KEY, 'false'); } catch(e) {}
 
     function isWarningEnabled() {
@@ -615,14 +615,15 @@
         }
 
         // Blue (406) — force transcode current stream (reloads player).
-        // Only useful if a streaming server is configured — otherwise show a toast.
+        // Only useful if a streaming server is configured. Do not require the
+        // cached health flag here; health checks are intentionally quiet in the
+        // player and can be stale even when the server is reachable.
         if (code === 406) {
             var ph = window.location.hash || '';
             if (ph.indexOf('#/player/') !== 0) return;
             var srvUrl = window.__STREMIO_SERVER_URL__ || '';
             var serverReady = srvUrl && srvUrl !== 'http://127.0.0.1:11470';
-            var srvOnline = window.__SERVER_HEALTH__ && window.__SERVER_HEALTH__.status === 'online';
-            if (!serverReady || !srvOnline) {
+            if (!serverReady) {
                 showToast('Force transcode needs a streaming server.\nCheck Settings > Server.', 'rgba(180,60,60,0.92)', 3500);
                 return;
             }
@@ -696,6 +697,19 @@
         try { return typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) { return false; }
     }
 
+    function guessNativeMimeType(url) {
+        var path = '';
+        try { path = String(url || '').split('?')[0].toLowerCase(); } catch(e) {}
+        if (path.indexOf('.mkv') !== -1) return 'video/x-matroska';
+        if (path.indexOf('.m3u8') !== -1) return 'application/vnd.apple.mpegurl';
+        if (path.indexOf('.mpd') !== -1) return 'application/dash+xml';
+        if (path.indexOf('.webm') !== -1) return 'video/webm';
+        if (path.indexOf('.mov') !== -1) return 'video/quicktime';
+        if (path.indexOf('.mp4') !== -1 || path.indexOf('.m4v') !== -1) return 'video/mp4';
+        return 'video/mp4';
+    }
+    window.__guessNativeMimeType = guessNativeMimeType;
+
     window.__launchNativePlayer = function(url) {
         if (!hasNative()) { console.log('[native] omi_platform unavailable — native player not supported on this device'); return false; }
         if (!url) {
@@ -706,11 +720,13 @@
 
         console.log('[native] Launching native player with:', url.substring(0, 100));
 
+        var mimeType = guessNativeMimeType(url);
+
         // Try multiple message types — different VIDAA versions respond to different ones
         var messages = [
-            {type: 'launchNativePlayer', url: url, title: 'Stremio', mimeType: 'video/mp4'},
+            {type: 'launchNativePlayer', url: url, title: 'Stremio', mimeType: mimeType},
             {type: 'openMediaPlayer', url: url, title: 'Stremio'},
-            {type: 'playVideo', url: url, mimeType: 'video/mp4', title: 'Stremio'}
+            {type: 'playVideo', url: url, mimeType: mimeType, title: 'Stremio'}
         ];
 
         var anySent = false;
@@ -1037,6 +1053,9 @@
             'stremio_stream_stats',
             'stremio_low_memory',
             'stremio_auto_rebuffer',
+            'stremio_quiet_player',
+            'stremio_auto_native_player_mkv',
+            'stremio_auto_native_player',
             'stremio_install_banner_last_success_at'
         ];
         var settings = {};
@@ -1229,7 +1248,10 @@
             'stremio_low_memory',
             'stremio_auto_rebuffer',
             'stremio_stream_stats',
-            'stremio_playback_warning'
+            'stremio_playback_warning',
+            'stremio_quiet_player',
+            'stremio_auto_native_player_mkv',
+            'stremio_auto_native_player'
         ];
         var settings = {};
         for (var i = 0; i < trackedKeys.length; i++) {
@@ -1395,6 +1417,9 @@
             localStorage.setItem('stremio_low_memory', 'true');
             localStorage.setItem('stremio_auto_rebuffer', 'true');
             localStorage.setItem('stremio_playback_warning', 'true');
+            localStorage.setItem('stremio_quiet_player', 'false');
+            localStorage.setItem('stremio_auto_native_player_mkv', 'false');
+            localStorage.setItem('stremio_auto_native_player', 'false');
         } catch (e) {}
         if (opts && opts.reload === false) {
             if (window.__showVidaaToast) {
@@ -2117,11 +2142,12 @@
         try {
             var hasNative = typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function';
             if (!hasNative) return false;
+            var mimeType = window.__guessNativeMimeType ? window.__guessNativeMimeType(url) : 'video/mp4';
 
             var messages = [
-                {type: 'launchNativePlayer', url: url, title: title, mimeType: 'video/mp4'},
+                {type: 'launchNativePlayer', url: url, title: title, mimeType: mimeType},
                 {type: 'openMediaPlayer', url: url, title: title},
-                {type: 'playVideo', url: url, mimeType: 'video/mp4', title: title}
+                {type: 'playVideo', url: url, mimeType: mimeType, title: title}
             ];
             for (var i = 0; i < messages.length; i++) {
                 try {
@@ -4737,7 +4763,16 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
         } catch(e) {}
 
         // Also poll for currentSrc changes as a belt-and-braces fallback.
-        setInterval(function() { onSrcChange(video); }, 2000);
+        // Clear the per-video poll when the core removes the element; otherwise
+        // old player sessions keep running and hold removed video nodes in memory.
+        video.__v7SrcPoll = setInterval(function() {
+            if (!video.isConnected && !document.documentElement.contains(video)) {
+                clearInterval(video.__v7SrcPoll);
+                video.__v7SrcPoll = null;
+                return;
+            }
+            onSrcChange(video);
+        }, 2000);
         // Eagerly warm whatever's there now.
         setTimeout(function() { onSrcChange(video); }, 100);
     }

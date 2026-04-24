@@ -277,13 +277,24 @@ test.describe('Remote control key mappings', () => {
     expect(display2).toBe('block');
   });
 
-  test('Blue button (406) sets force transcode flag in player route', async ({ page }) => {
-    await page.goto('/#/player/test');
+  test('Blue button (406) sets force transcode flag with configured server even when health is stale', async ({ page }) => {
+    await page.goto('/?server=http://10.0.0.5:11470#/player/test');
     await page.evaluate(() => {
+      window.__SERVER_HEALTH__ = { status: 'unknown', latency: null, version: null };
       document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 406 }));
     });
     const flag = await page.evaluate(() => window.__FORCE_TRANSCODE__);
     expect(flag).toBe(true);
+  });
+
+  test('Blue button (406) does not force transcode without a configured server', async ({ page }) => {
+    await page.goto('/#/player/test');
+    await page.evaluate(() => {
+      window.__SERVER_HEALTH__ = { status: 'online', latency: 12, version: 'test' };
+      document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 406 }));
+    });
+    const flag = await page.evaluate(() => window.__FORCE_TRANSCODE__);
+    expect(flag).not.toBe(true);
   });
 
   test('Green button (404) shows server health overlay', async ({ page }) => {
@@ -304,6 +315,33 @@ test.describe('Remote control key mappings', () => {
     expect(overlayText).toContain('Server Health');
     expect(overlayText).toContain('online');
     expect(overlayText).toContain('42ms');
+  });
+});
+
+test.describe('Native VIDAA settings and handoff', () => {
+  test('native settings bundle exposes all projector toggles as Settings rows', async ({ page }) => {
+    await page.goto('/');
+    const bundle = await page.evaluate(async () => {
+      const response = await fetch('/settings.chunk.js');
+      return response.text();
+    });
+    expect(bundle).toContain('label: "STREMIO TV"');
+    expect(bundle).toContain('Quiet Player Mode');
+    expect(bundle).toContain('Auto Native Player for MKV');
+    expect(bundle).toContain('Auto Native Player (all streams)');
+    expect(bundle).toContain('Audio Offset: ');
+  });
+
+  test('native player handoff uses container-aware MIME types', async ({ page }) => {
+    await page.goto('/');
+    const types = await page.evaluate(() => ({
+      mkv: window.__guessNativeMimeType('https://cdn.example/movie.mkv?token=1'),
+      hls: window.__guessNativeMimeType('https://cdn.example/master.m3u8'),
+      mp4: window.__guessNativeMimeType('https://cdn.example/movie.mp4')
+    }));
+    expect(types.mkv).toBe('video/x-matroska');
+    expect(types.hls).toBe('application/vnd.apple.mpegurl');
+    expect(types.mp4).toBe('video/mp4');
   });
 });
 
@@ -463,7 +501,7 @@ test.describe('Installer flows', () => {
     await page.goto('/');
     await expect(page.locator('#install-banner')).toBeVisible({ timeout: 7000 });
     await page.locator('#install-banner button').first().click();
-    await expect(page.locator('#install-banner span')).toContainText('Install request accepted');
+    await expect(page.locator('#install-banner span')).toContainText('Install requested');
 
     const persisted = await page.evaluate(() => localStorage.getItem('stremio_installed_to_launcher'));
     expect(persisted).toBeNull();
@@ -661,6 +699,9 @@ test.describe('Diagnostics', () => {
       localStorage.setItem('stremio_low_memory', 'false');
       localStorage.setItem('stremio_auto_rebuffer', 'false');
       localStorage.setItem('stremio_playback_warning', 'false');
+      localStorage.setItem('stremio_quiet_player', 'true');
+      localStorage.setItem('stremio_auto_native_player_mkv', 'true');
+      localStorage.setItem('stremio_auto_native_player', 'true');
       window.__applyPlaybackSafeMode();
     });
     await page.waitForLoadState('load');
@@ -675,7 +716,10 @@ test.describe('Diagnostics', () => {
       streamStats: localStorage.getItem('stremio_stream_stats'),
       lowMemory: localStorage.getItem('stremio_low_memory'),
       autoRebuffer: localStorage.getItem('stremio_auto_rebuffer'),
-      playbackWarning: localStorage.getItem('stremio_playback_warning')
+      playbackWarning: localStorage.getItem('stremio_playback_warning'),
+      quietPlayer: localStorage.getItem('stremio_quiet_player'),
+      autoNativeMkv: localStorage.getItem('stremio_auto_native_player_mkv'),
+      autoNativeAll: localStorage.getItem('stremio_auto_native_player')
     }));
 
     expect(state.mode).toBe('auto');
@@ -687,5 +731,8 @@ test.describe('Diagnostics', () => {
     expect(state.lowMemory).toBe('true');
     expect(state.autoRebuffer).toBe('true');
     expect(state.playbackWarning).toBe('true');
+    expect(state.quietPlayer).toBe('false');
+    expect(state.autoNativeMkv).toBe('false');
+    expect(state.autoNativeAll).toBe('false');
   });
 });
