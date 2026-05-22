@@ -152,10 +152,14 @@ test.describe('DV Profile 7 detection', () => {
     await expect(overlay).not.toBeAttached();
   });
 
-  test('playback warning transcode button sets force flag', async ({ page }) => {
+  test('playback warning transcode button sets force flag (with a real server)', async ({ page }) => {
     await page.goto('/');
 
+    // H4/M3: the Force Transcode button is now gated on a REAL streaming server,
+    // exactly like the Blue-button handler. With a configured (non-default)
+    // server it is enabled and sets the force flag.
     await page.evaluate(() => {
+      window.__STREMIO_SERVER_URL__ = 'http://192.168.1.50:11470';
       window.__STREAM_INFO__ = { videoCodec: 'dvhe.07.06', width: 3840, height: 2160 };
       window.__showPlaybackWarning();
     });
@@ -165,6 +169,28 @@ test.describe('DV Profile 7 detection', () => {
     expect(flag).toBe(true);
 
     await expect(page.locator('#dv-warning')).not.toBeAttached();
+  });
+
+  test('playback warning transcode button is gated when there is NO streaming server', async ({ page }) => {
+    await page.goto('/');
+
+    const result = await page.evaluate(() => {
+      window.__STREMIO_SERVER_URL__ = 'http://127.0.0.1:11470'; // default == no real server
+      window.__STREAM_INFO__ = { videoCodec: 'dvhe.07.06', width: 3840, height: 2160 };
+      window.__FORCE_TRANSCODE__ = false;
+      window.__showPlaybackWarning();
+      var btns = Array.prototype.slice.call(document.querySelectorAll('#dv-warning button'));
+      var transBtn = btns.find(function (b) { return /transcode/i.test(b.textContent || ''); });
+      var disabled = !!(transBtn && transBtn.disabled);
+      if (transBtn) transBtn.click();
+      return { present: !!transBtn, disabled: disabled, force: window.__FORCE_TRANSCODE__, label: transBtn ? transBtn.textContent : '' };
+    });
+
+    expect(result.present).toBe(true);
+    expect(result.disabled).toBe(true);
+    expect(result.force).not.toBe(true);
+    // Honest label tells the user a server is required.
+    expect(/needs streaming-server/i.test(result.label)).toBe(true);
   });
 });
 

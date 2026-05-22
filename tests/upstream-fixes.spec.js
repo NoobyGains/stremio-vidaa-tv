@@ -378,11 +378,12 @@ test.describe('#12 — Native player title', () => {
     expect(title).toBe('Inception');
   });
 
-  test('enhanced launcher sends platform messages when omi_platform is available', async ({ page }) => {
-    // Use addInitScript to set a stub launcher so #12's interval immediately wraps it
-    // (avoids waiting 10s for the setTimeout fallback)
+  test('launcher carries a title in its best-effort platform messages', async ({ page }) => {
+    // Honest version: the consolidated launcher still SENDS the messages
+    // (best-effort), each carrying the stream URL + a title — but the messages
+    // being sent says NOTHING about success. See buffering-honesty.spec.js for
+    // the verification-result assertions.
     await page.addInitScript(() => {
-      window.__launchNativePlayer = function stubForTesting(url) { return false; };
       window.__testPlatformMessages = [];
       window.omi_platform = {
         sendPlatformMessage: function(msg) {
@@ -392,17 +393,15 @@ test.describe('#12 — Native player title', () => {
     });
 
     await page.goto('/');
-    // Wait for the 500ms interval to detect and wrap the stub launcher
     await page.waitForTimeout(2000);
 
-    const sent = await page.evaluate(() => {
-      try { window.__launchNativePlayer('http://stream.test/video.mp4'); } catch(e) {}
+    const sent = await page.evaluate(async () => {
+      // Short verify window so the returned Promise settles quickly.
+      try { await window.__launchNativePlayer('http://stream.test/video.mp4', { verifyTimeoutMs: 100 }); } catch(e) {}
       return window.__testPlatformMessages || [];
     });
 
-    // The enhanced launcher sends multiple message types (launchNativePlayer, openMediaPlayer, playVideo)
     expect(sent.length).toBeGreaterThan(0);
-    // Each message should include the stream URL and a title string
     var withUrl = sent.find(function(m) { return m.url === 'http://stream.test/video.mp4'; });
     expect(withUrl).toBeDefined();
     expect(typeof withUrl.title).toBe('string');
@@ -414,28 +413,21 @@ test.describe('#12 — Native player title', () => {
 // #13 — Mark as watched after native player handoff
 // ==========================================================================
 test.describe('#13 — Mark as watched on handoff', () => {
-  test('handoff tracking logic records state correctly', async ({ page }) => {
-    // Test the handoff recording logic independently from the wrapping chain
+  // The old JSON-state recording + fake-90%-progress behaviour was REMOVED.
+  // Mark-as-watched now fires ONLY on a VERIFIED handoff and ONLY when the user
+  // enables the toggle — and never corrupts the resume point. The honest
+  // behaviour is asserted in buffering-honesty.spec.js (H3). Here we just verify
+  // the feature is now a user-toggleable settings item per the project rule.
+  test('mark-watched-on-handoff is registered as a toggleable settings item', async ({ page }) => {
     await page.goto('/');
-
-    const result = await page.evaluate(() => {
-      // Simulate what the #13 hook does when the launcher returns true
-      var hash = '#/player/handoff-test';
-      var handoff = {
-        hash: hash,
-        time: Date.now(),
-        duration: 3600,
-        currentTime: 1200
-      };
-      localStorage.setItem('stremio_native_handoff', JSON.stringify(handoff));
-      // Read it back
-      return JSON.parse(localStorage.getItem('stremio_native_handoff'));
+    await page.waitForTimeout(2000);
+    const registered = await page.evaluate(() => {
+      var items = window.__vidaaSettingsItems || [];
+      return items.some(function (i) {
+        return i.lsKey === 'stremio_native_handoff' && i.type === 'toggle' && i.defaultValue === false;
+      });
     });
-
-    expect(result.hash).toBe('#/player/handoff-test');
-    expect(result.duration).toBe(3600);
-    expect(result.currentTime).toBe(1200);
-    expect(result.time).toBeGreaterThan(0);
+    expect(registered).toBe(true);
   });
 });
 

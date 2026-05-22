@@ -332,9 +332,15 @@
         overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);z-index:100000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;font-family:PlusJakartaSans,sans-serif;';
 
         var title = isOversize ? 'Resolution Too High' : 'Playback Issue Detected';
+        // Only advertise transcode as a remedy when a REAL streaming server is
+        // configured. Bare-TV / Real-Debrid users have no server, so telling them
+        // to "transcode via your streaming server" is a dead end.
+        var srvUrlW = window.__STREMIO_SERVER_URL__ || '';
+        var serverReadyW = srvUrlW && srvUrlW !== 'http://127.0.0.1:11470';
         var detail = isOversize
             ? 'This stream is ' + esc(res) + ' which exceeds your TV\'s 4K decode limit. Try a 2160p or 1080p source instead.'
-            : 'This stream (' + esc(codec) + ' @ ' + esc(res) + ') is not rendering. The container format may be incompatible. Try an MKV source, or transcode via your streaming server.';
+            : 'This stream (' + esc(codec) + ' @ ' + esc(res) + ') is not rendering. The container format may be incompatible. Try a 1080p or MP4 version of this title'
+                + (serverReadyW ? ', or use your streaming server to transcode it.' : '. (Transcoding needs a separate Stremio streaming-server PC — Settings ▸ Server.)');
 
         var inner = '<div style="font-size:2.2rem;margin-bottom:1rem;font-weight:700;">' + title + '</div>'
             + '<div style="font-size:1.1rem;color:rgba(255,255,255,0.65);margin-bottom:2rem;text-align:center;max-width:560px;line-height:1.5;">' + detail + '</div>'
@@ -355,24 +361,47 @@
             nativeBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
             nativeBtn.onblur = function() { this.style.outline = 'none'; };
             nativeBtn.onclick = function() {
-                window.__STREAM_INFO__.stallCheck = null;
                 var video = document.querySelector('video');
                 var streamUrl = video ? video.currentSrc || video.src : null;
-                if (streamUrl) {
-                    window.__launchNativePlayer(streamUrl);
-                    overlay.remove();
-                }
+                if (!streamUrl) return;
+                // M2: do NOT remove the overlay until we KNOW the handoff worked.
+                // The launcher resolves a verified boolean; only on success do we
+                // clear the stall flag + dismiss. On failure the recovery UI stays.
+                var prev = nativeBtn.textContent;
+                nativeBtn.textContent = 'Trying…';
+                nativeBtn.disabled = true;
+                Promise.resolve(window.__launchNativePlayer(streamUrl)).then(function(opened) {
+                    if (opened) {
+                        window.__STREAM_INFO__.stallCheck = null;
+                        overlay.remove();
+                    } else {
+                        nativeBtn.textContent = 'TV player didn’t open — try another option';
+                        nativeBtn.disabled = false;
+                    }
+                });
             };
             actionsDiv.appendChild(nativeBtn);
         }
 
+        // H4/M3: Force Transcode only works with a REAL streaming server. Gate it
+        // exactly like the Blue-button handler does. Without a server, don't
+        // pretend transcode is available — show it disabled with an honest label.
         var transBtn = document.createElement('button');
-        transBtn.textContent = 'Force Transcode';
-        transBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:' + (hasNativePlayer ? 'rgba(255,255,255,0.1)' : '#7b5bf5') + ';color:white;border:' + (hasNativePlayer ? '1px solid rgba(255,255,255,0.25)' : 'none') + ';border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;';
+        transBtn.textContent = serverReadyW ? 'Force Transcode' : 'Transcode (needs streaming-server PC)';
+        var transBg = serverReadyW ? (hasNativePlayer ? 'rgba(255,255,255,0.1)' : '#7b5bf5') : 'rgba(255,255,255,0.05)';
+        var transColor = serverReadyW ? 'white' : 'rgba(255,255,255,0.4)';
+        var transBorder = serverReadyW ? (hasNativePlayer ? '1px solid rgba(255,255,255,0.25)' : 'none') : '1px solid rgba(255,255,255,0.1)';
+        transBtn.style.cssText = 'padding:0.9rem 2.2rem;font-size:1.1rem;background:' + transBg + ';color:' + transColor + ';border:' + transBorder + ';border-radius:8px;cursor:' + (serverReadyW ? 'pointer' : 'not-allowed') + ';font-family:inherit;font-weight:600;';
         transBtn.setAttribute('tabindex', '0');
+        if (!serverReadyW) {
+            transBtn.disabled = true;
+            transBtn.setAttribute('aria-disabled', 'true');
+            transBtn.title = 'Force transcode requires a separate Stremio streaming server (Settings ▸ Server). Real-Debrid / bare-TV setups have none.';
+        }
         transBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
         transBtn.onblur = function() { this.style.outline = 'none'; };
         transBtn.onclick = function() {
+            if (!serverReadyW) return; // gated: no real server, do nothing
             window.__STREAM_INFO__.stallCheck = null;
             window.__FORCE_TRANSCODE__ = true;
             overlay.remove();
@@ -688,11 +717,43 @@
 })();
 </script>
 <script>
-// Native player handoff — hand stream URL to VIDAA system player
-// The native player has full hardware DV decode with metadata intact.
-// Check omi_platform lazily — on some VIDAA firmwares it's injected after page load,
-// so an early-return at script init time silently disables the Yellow button forever.
+// ═══════════════════════════════════════════════════════════════════════
+// Native player handoff — SINGLE consolidated, HONEST launcher.
+// ═══════════════════════════════════════════════════════════════════════
+// IMPORTANT (read before "fixing"): omi_platform.sendPlatformMessage is a real
+// Opera/Vewd bridge, but its ONLY working message type on shipped VIDAA firmware
+// is AllAppsUpdate (launcher refresh). The message types we send here
+// (launchNativePlayer / openMediaPlayer / playVideo) are NOT acted on by any
+// confirmed VIDAA firmware (issues #28, #29 — three users saw "nothing
+// happens"). The send is fire-and-forget with NO acknowledgement.
+//
+// So we MUST NOT report success just because a message was dispatched. The only
+// observable signal that a native app actually took the foreground is the
+// browser document being backgrounded: visibilitychange->hidden, window blur,
+// or pagehide. We listen for any of those within a short window. If none
+// arrives we treat the handoff as FAILED. Per 2026 research there is NO
+// guarantee VIDAA's Opera-based browser even fires these events on foreground
+// loss (Opera TV historically allowed the Page Visibility API to be disabled),
+// so we are deliberately CONSERVATIVE: failure is the default, success requires
+// a positive signal.
+//
+// The launcher returns a Promise<boolean> reflecting the VERIFIED outcome.
+// Callers MUST act on the resolved value (un-pause the browser <video>, show
+// honest advice) — never assume success.
+//
+// This is the ONLY place __launchNativePlayer is defined. The previous three
+// racing redefinitions (original / title-enhanced / watched-wrapper, each
+// re-installed by setInterval + setTimeout) clobbered each other
+// nondeterministically. They are consolidated here in deterministic order:
+//   build payload+title -> fire-and-forget send -> verify backgrounding ->
+//   (only if verified AND toggle on) optional watched-tracking.
 (function() {
+    'use strict';
+
+    var HANDOFF_KEY = 'stremio_native_handoff';   // also the watched-tracking toggle key
+    var DEFAULT_VERIFY_MS = 2000;                  // window to observe app backgrounding
+    var DEFAULT_WATCHED_DELAY_MS = 30000;          // delay before marking watched (verified only)
+
     function hasNative() {
         try { return typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) { return false; }
     }
@@ -710,36 +771,208 @@
     }
     window.__guessNativeMimeType = guessNativeMimeType;
 
-    window.__launchNativePlayer = function(url) {
-        if (!hasNative()) { console.log('[native] omi_platform unavailable — native player not supported on this device'); return false; }
+    // Scrape a human title for the native player payload. Best-effort only.
+    function getPlayerTitle() {
+        try {
+            var titleEls = document.querySelectorAll('[class*="title"], [class*="Title"]');
+            for (var i = 0; i < titleEls.length; i++) {
+                var txt = (titleEls[i].textContent || '').trim();
+                if (txt.length > 3 && txt.length < 200 && txt.indexOf('Settings') === -1 && txt.indexOf('Stremio') === -1) {
+                    return txt;
+                }
+            }
+            var hash = window.location.hash || '';
+            var match = hash.match(/[?&]title=([^&]+)/);
+            if (match) return decodeURIComponent(match[1]);
+            if (window.__STREAM_INFO__ && window.__STREAM_INFO__.title) return window.__STREAM_INFO__.title;
+        } catch(e) {}
+        return 'Stremio';
+    }
+
+    // Cache the title from detail pages so we have it when the player opens.
+    setInterval(function() {
+        var hash = window.location.hash || '';
+        if (hash.indexOf('#/detail') === 0 || hash.indexOf('#/metadetails') === 0) {
+            try {
+                var h1s = document.querySelectorAll('h1, h2, [class*="title"], [class*="Title"], [class*="name"], [class*="Name"]');
+                for (var i = 0; i < h1s.length; i++) {
+                    var txt = (h1s[i].textContent || '').trim();
+                    if (txt.length > 2 && txt.length < 200) {
+                        window.__STREAM_INFO__ = window.__STREAM_INFO__ || {};
+                        window.__STREAM_INFO__.title = txt;
+                        break;
+                    }
+                }
+            } catch(e) {}
+        }
+    }, 2000);
+
+    // Returns a Promise<boolean> that resolves true ONLY if the document is
+    // observed to background within `ms`. Conservative: no signal => false.
+    function verifyBackgrounding(ms) {
+        return new Promise(function(resolve) {
+            var settled = false;
+            function done(ok) {
+                if (settled) return;
+                settled = true;
+                try { document.removeEventListener('visibilitychange', onVis); } catch(e) {}
+                try { window.removeEventListener('blur', onBlur); } catch(e) {}
+                try { window.removeEventListener('pagehide', onHide); } catch(e) {}
+                clearTimeout(timer);
+                resolve(ok);
+            }
+            function onVis() { if (document.visibilityState === 'hidden' || document.hidden === true) done(true); }
+            function onBlur() { done(true); }
+            function onHide() { done(true); }
+            // If we're already hidden, that's a positive signal.
+            if (document.visibilityState === 'hidden' || document.hidden === true) { resolve(true); return; }
+            document.addEventListener('visibilitychange', onVis);
+            window.addEventListener('blur', onBlur);
+            window.addEventListener('pagehide', onHide);
+            var timer = setTimeout(function() { done(false); }, ms);
+        });
+    }
+
+    // Mark-as-watched — VERIFIED handoffs only, behind the existing toggle.
+    // NOTE: we deliberately do NOT write any fake currentTime/progress. The old
+    // code set currentTime = duration*0.9 which corrupted the resume point on
+    // every (always-"true") handoff. That is removed entirely.
+    function markAsWatched(handoff) {
+        try {
+            if (!window.core || !handoff || !handoff.hash) return;
+            window.core.getState('player').then(function(playerState) {
+                if (!playerState) return;
+                var metaId = null, videoId = null;
+                try {
+                    if (playerState.metaItem) metaId = playerState.metaItem.id;
+                    if (playerState.video) videoId = playerState.video.id;
+                } catch(e) {}
+                if (metaId) {
+                    try {
+                        window.core.dispatch({
+                            action: 'Ctx',
+                            args: { action: 'MarkAsWatched', args: { id: metaId, videoId: videoId, isWatched: true } }
+                        }, 'ctx');
+                        console.log('[watched] Marked as watched (VERIFIED handoff):', metaId, videoId);
+                    } catch(e) {
+                        console.log('[watched] MarkAsWatched dispatch failed:', e.message);
+                    }
+                }
+            }).catch(function(e) {
+                console.log('[watched] Failed to get player state:', e.message);
+            });
+        } catch(e) {}
+    }
+
+    function watchedTrackingEnabled() {
+        try { return localStorage.getItem(HANDOFF_KEY) === 'true'; } catch(e) { return false; }
+    }
+
+    // Shared recovery helper for ALL auto/recovery call sites. When a handoff
+    // fails (verified false), callers MUST un-pause the browser <video> so the
+    // user isn't left staring at a frozen, paused player with no feedback, and
+    // surface honest advice. Non-blocking, dismissible.
+    var lastFailToastAt = 0;
+    window.__recoverAfterFailedHandoff = function(video, opts) {
+        opts = opts || {};
+        // Best-effort resume of the browser player.
+        try {
+            video = video || document.querySelector('video');
+            if (video && video.paused) {
+                var p = video.play();
+                if (p && typeof p.catch === 'function') p.catch(function() {});
+            }
+        } catch(e) {}
+        if (opts.silent) return;
+        // Throttle toasts so repeated stalls don't spam.
+        var now = Date.now();
+        if (now - lastFailToastAt < 6000) return;
+        lastFailToastAt = now;
+        var existing = document.getElementById('__handoff-fail-toast');
+        if (existing) existing.remove();
+        var toast = document.createElement('div');
+        toast.id = '__handoff-fail-toast';
+        toast.className = 'dv-honest-toast';
+        toast.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:rgba(20,20,20,0.95);color:#fff;padding:12px 18px;border-radius:10px;font-size:14px;z-index:99999;font-family:PlusJakartaSans,sans-serif;max-width:460px;text-align:center;line-height:1.4;display:flex;flex-direction:column;gap:8px;';
+        var msg = document.createElement('div');
+        msg.textContent = 'The TV’s built-in player didn’t open — resuming here. This stream may be too heavy for the TV browser; try a 1080p or MP4 version of this title.';
+        toast.appendChild(msg);
+        var btn = document.createElement('button');
+        btn.textContent = 'OK';
+        btn.style.cssText = 'background:rgba(255,255,255,0.14);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:13px;font-family:inherit;font-weight:600;cursor:pointer;align-self:center;';
+        btn.setAttribute('tabindex', '0');
+        btn.onfocus = function() { this.style.outline = '2px solid #fff'; };
+        btn.onblur = function() { this.style.outline = 'none'; };
+        btn.onclick = function() { toast.remove(); };
+        toast.appendChild(btn);
+        document.body.appendChild(toast);
+        setTimeout(function() { if (toast.parentNode) toast.remove(); }, 9000);
+    };
+
+    // The ONE launcher. Returns Promise<boolean> = verified opened?
+    // opts: { verifyTimeoutMs, watchedDelayMs } (test/override hooks)
+    window.__launchNativePlayer = function(url, opts) {
+        opts = opts || {};
+        var verifyMs = opts.verifyTimeoutMs != null ? opts.verifyTimeoutMs
+            : (window.__NATIVE_VERIFY_TIMEOUT_MS__ != null ? window.__NATIVE_VERIFY_TIMEOUT_MS__ : DEFAULT_VERIFY_MS);
+        var watchedDelay = opts.watchedDelayMs != null ? opts.watchedDelayMs : DEFAULT_WATCHED_DELAY_MS;
+
+        if (!hasNative()) {
+            console.log('[native] omi_platform unavailable — native player not supported on this device');
+            return Promise.resolve(false);
+        }
         if (!url) {
             var video = document.querySelector('video');
             url = video ? video.currentSrc || video.src : null;
         }
-        if (!url) { console.log('[native] No stream URL found'); return false; }
+        if (!url) { console.log('[native] No stream URL found'); return Promise.resolve(false); }
 
-        console.log('[native] Launching native player with:', url.substring(0, 100));
-
+        var title = getPlayerTitle() || 'Stremio';
         var mimeType = guessNativeMimeType(url);
+        console.log('[native] Attempting native handoff (title:', title + '):', String(url).substring(0, 100));
 
-        // Try multiple message types — different VIDAA versions respond to different ones
+        // Arm verification BEFORE sending so we don't miss a fast backgrounding.
+        var verifyPromise = verifyBackgrounding(verifyMs);
+
+        // Fire-and-forget — try every message type; swallow throws. Sending says
+        // NOTHING about whether the native player actually opened.
         var messages = [
-            {type: 'launchNativePlayer', url: url, title: 'Stremio', mimeType: mimeType},
-            {type: 'openMediaPlayer', url: url, title: 'Stremio'},
-            {type: 'playVideo', url: url, mimeType: mimeType, title: 'Stremio'}
+            {type: 'launchNativePlayer', url: url, title: title, mimeType: mimeType},
+            {type: 'openMediaPlayer', url: url, title: title},
+            {type: 'playVideo', url: url, mimeType: mimeType, title: title}
         ];
-
-        var anySent = false;
         for (var i = 0; i < messages.length; i++) {
             try {
                 omi_platform.sendPlatformMessage(JSON.stringify(messages[i]));
-                console.log('[native] Sent:', messages[i].type);
-                anySent = true;
+                console.log('[native] Sent (unacked):', messages[i].type);
             } catch(e) {
-                console.log('[native] Failed:', messages[i].type, e.message);
+                console.log('[native] Send threw:', messages[i].type, e.message);
             }
         }
-        return anySent;
+
+        return verifyPromise.then(function(opened) {
+            if (!opened) {
+                console.warn('[native] No backgrounding signal within ' + verifyMs + 'ms — treating handoff as FAILED.');
+                return false;
+            }
+            console.log('[native] Backgrounding observed — handoff VERIFIED.');
+            // Only on a VERIFIED handoff, and only if the user enabled watched
+            // tracking, record + (after delay) mark as watched. No resume-point
+            // corruption ever.
+            if (watchedTrackingEnabled()) {
+                try {
+                    var v = document.querySelector('video');
+                    var handoff = {
+                        hash: window.location.hash || '',
+                        time: Date.now(),
+                        duration: v ? v.duration : 0,
+                        currentTime: v ? v.currentTime : 0
+                    };
+                    setTimeout(function() { markAsWatched(handoff); }, watchedDelay);
+                } catch(e) {}
+            }
+            return true;
+        });
     };
 
     // Yellow button (405) — launch native player with current stream.
@@ -749,23 +982,49 @@
         var hash = window.location.hash || '';
         if (hash.indexOf('#/player/') !== 0) return;
 
-        var toast = document.createElement('div');
-        toast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.9);color:white;padding:20px 40px;border-radius:12px;font-size:1.2rem;font-family:PlusJakartaSans,sans-serif;z-index:100000;pointer-events:none;text-align:center;max-width:500px;';
+        function mkToast(text, bg) {
+            var toast = document.createElement('div');
+            toast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:' + (bg || 'rgba(0,0,0,0.9)') + ';color:white;padding:20px 40px;border-radius:12px;font-size:1.2rem;font-family:PlusJakartaSans,sans-serif;z-index:100000;pointer-events:none;text-align:center;max-width:500px;';
+            toast.textContent = text;
+            document.body.appendChild(toast);
+            setTimeout(function() { toast.remove(); }, 3500);
+            return toast;
+        }
 
         if (!hasNative()) {
-            toast.textContent = 'Native player not available on this device';
-            toast.style.background = 'rgba(180,60,60,0.92)';
-            document.body.appendChild(toast);
-            setTimeout(function() { toast.remove(); }, 3000);
+            mkToast('Native player not available on this device', 'rgba(180,60,60,0.92)');
             return;
         }
 
-        var launched = window.__launchNativePlayer();
-        toast.textContent = launched ? 'Opening in native player...' : 'Native player could not open this stream';
-        if (!launched) toast.style.background = 'rgba(180,60,60,0.92)';
-        document.body.appendChild(toast);
-        setTimeout(function() { toast.remove(); }, 3000);
+        // Honest flow: show a "trying" hint, then replace with the VERIFIED result.
+        var tryToast = mkToast('Trying the TV’s player…', 'rgba(0,0,0,0.9)');
+        var video = document.querySelector('video');
+        var src = video ? video.currentSrc || video.src : null;
+        window.__launchNativePlayer(src).then(function(opened) {
+            try { tryToast.remove(); } catch(e) {}
+            if (opened) {
+                mkToast('Opening in native player…');
+            } else {
+                mkToast('Couldn’t open the TV’s player — see options', 'rgba(180,60,60,0.92)');
+            }
+        });
     });
+
+    // User-toggleable: mark-as-watched after a VERIFIED native handoff. OFF by
+    // default — since the handoff itself is unreliable on most VIDAA firmware,
+    // we never touch library/watched state unless the user opts in.
+    var watchedReg = setInterval(function() {
+        if (!window.__registerVidaaSettingsItem) return;
+        clearInterval(watchedReg);
+        window.__registerVidaaSettingsItem({
+            id: 'native-handoff-watched-toggle',
+            type: 'toggle',
+            label: 'Mark Watched After Native Handoff',
+            description: 'When the TV’s native player is confirmed to open (the Stremio browser actually backgrounds), mark the title as watched in your library after ~30s. OFF by default — only enable if your TV genuinely opens streams in its built-in player.',
+            lsKey: HANDOFF_KEY,
+            defaultValue: false
+        });
+    }, 200);
 })();
 </script>
 <script>
@@ -1444,6 +1703,18 @@
             }
         });
     }, 1000);
+
+    // The Settings ▸ STREMIO TV "Diagnostics" row is hardcoded in
+    // settings.chunk.js to call window.__showVidaaDiagnostics. To make the new
+    // screenshot-friendly buffering diagnostic reachable from Settings WITHOUT
+    // editing that bundle, we extend this existing entry point: it still shows
+    // the copyable JSON blob (great for GitHub issues), and ALSO pops the big
+    // photo-friendly panel (great for the TV, which has no clipboard).
+    var _origShowVidaaDiagnostics = window.__showVidaaDiagnostics;
+    window.__showVidaaDiagnostics = function() {
+        try { if (typeof _origShowVidaaDiagnostics === 'function') _origShowVidaaDiagnostics(); } catch (e) {}
+        try { if (typeof window.__showVidaaDiagnostic === 'function') window.__showVidaaDiagnostic(); } catch (e) {}
+    };
 })();
 </script>
 <script>
@@ -2081,215 +2352,22 @@
 })();
 </script>
 <script>
-// #12 — Pass full title to native player
-// Scrapes the title from the player DOM or core state and passes it in the
-// __launchNativePlayer() payload so the native VIDAA player shows the correct title.
-(function() {
-    // Store the original launcher if it exists, and wrap it
-    var origLauncher = window.__launchNativePlayer;
-
-    function getPlayerTitle() {
-        // Try 1: Scrape from player DOM (Stremio shows title in player header)
-        var titleEls = document.querySelectorAll('[class*="title"], [class*="Title"]');
-        for (var i = 0; i < titleEls.length; i++) {
-            var txt = (titleEls[i].textContent || '').trim();
-            // Filter out very short or very long strings, and UI labels
-            if (txt.length > 3 && txt.length < 200 && txt.indexOf('Settings') === -1 && txt.indexOf('Stremio') === -1) {
-                return txt;
-            }
-        }
-        // Try 2: Look in the player hash URL for title hints
-        var hash = window.location.hash || '';
-        var match = hash.match(/[?&]title=([^&]+)/);
-        if (match) return decodeURIComponent(match[1]);
-        // Try 3: Check window.__STREAM_INFO__ if title was cached there
-        if (window.__STREAM_INFO__ && window.__STREAM_INFO__.title) {
-            return window.__STREAM_INFO__.title;
-        }
-        return 'Stremio';
-    }
-
-    // Cache title from meta/details page before entering player
-    var cachedTitle = 'Stremio';
-    setInterval(function() {
-        var hash = window.location.hash || '';
-        // On detail pages, scrape the title for when user enters player
-        if (hash.indexOf('#/detail') === 0 || hash.indexOf('#/metadetails') === 0) {
-            var h1s = document.querySelectorAll('h1, h2, [class*="title"], [class*="Title"], [class*="name"], [class*="Name"]');
-            for (var i = 0; i < h1s.length; i++) {
-                var txt = (h1s[i].textContent || '').trim();
-                if (txt.length > 2 && txt.length < 200) {
-                    cachedTitle = txt;
-                    window.__STREAM_INFO__ = window.__STREAM_INFO__ || {};
-                    window.__STREAM_INFO__.title = txt;
-                    break;
-                }
-            }
-        }
-    }, 2000);
-
-    // Override __launchNativePlayer to include title
-    function enhancedLaunchNativePlayer(url) {
-        if (!url) {
-            var video = document.querySelector('video');
-            url = video ? video.currentSrc || video.src : null;
-        }
-        if (!url) { console.log('[native] No stream URL found'); return false; }
-
-        var title = getPlayerTitle() || cachedTitle || 'Stremio';
-        console.log('[native] Launching native player with title:', title);
-
-        try {
-            var hasNative = typeof omi_platform !== 'undefined' && typeof omi_platform.sendPlatformMessage === 'function';
-            if (!hasNative) return false;
-            var mimeType = window.__guessNativeMimeType ? window.__guessNativeMimeType(url) : 'video/mp4';
-
-            var messages = [
-                {type: 'launchNativePlayer', url: url, title: title, mimeType: mimeType},
-                {type: 'openMediaPlayer', url: url, title: title},
-                {type: 'playVideo', url: url, mimeType: mimeType, title: title}
-            ];
-            for (var i = 0; i < messages.length; i++) {
-                try {
-                    omi_platform.sendPlatformMessage(JSON.stringify(messages[i]));
-                    console.log('[native] Sent:', messages[i].type, 'with title:', title);
-                } catch(e) {}
-            }
-            return true;
-        } catch(e) { return false; }
-    }
-
-    // Wait for the original to be defined, then override
-    var overrideCheck = setInterval(function() {
-        if (window.__launchNativePlayer && window.__launchNativePlayer !== enhancedLaunchNativePlayer) {
-            window.__launchNativePlayer = enhancedLaunchNativePlayer;
-            clearInterval(overrideCheck);
-            console.log('[native] Enhanced native player launcher with title support');
-        }
-    }, 500);
-    // Also set it directly in case the original hasn't loaded yet
-    setTimeout(function() {
-        window.__launchNativePlayer = enhancedLaunchNativePlayer;
-        clearInterval(overrideCheck);
-    }, 10000);
-})();
-</script>
-<script>
-// #13 — Mark as watched after native player handoff
-// After launching the native player, we can't track actual progress.
-// This patch estimates the user watched enough to mark it and dispatches
-// a mark-as-watched action to stremio-core after a configurable delay.
-(function() {
-    var HANDOFF_KEY = 'stremio_native_handoff';
-
-    // Hook into the native player launch
-    var origLaunch = null;
-    var hookInstalled = false;
-
-    function installHook() {
-        if (hookInstalled) return;
-        if (!window.__launchNativePlayer) return;
-
-        origLaunch = window.__launchNativePlayer;
-        var wrappedLaunch = function(url) {
-            var result = origLaunch(url);
-            if (result) {
-                // Record the handoff with current player state
-                try {
-                    var hash = window.location.hash || '';
-                    var video = document.querySelector('video');
-                    var duration = video ? video.duration : 0;
-                    var currentTime = video ? video.currentTime : 0;
-
-                    var handoff = {
-                        hash: hash,
-                        time: Date.now(),
-                        duration: duration,
-                        currentTime: currentTime
-                    };
-                    localStorage.setItem(HANDOFF_KEY, JSON.stringify(handoff));
-                    console.log('[watched] Native handoff recorded, duration:', duration, 'currentTime:', currentTime);
-
-                    // After a delay, mark as watched
-                    // Assume user will watch enough content in native player
-                    setTimeout(function() {
-                        markAsWatched(handoff);
-                    }, 30000); // 30 seconds — reasonable assumption they're watching
-                } catch(e) {
-                    console.log('[watched] Failed to record handoff:', e.message);
-                }
-            }
-            return result;
-        };
-        window.__launchNativePlayer = wrappedLaunch;
-        hookInstalled = true;
-        console.log('[watched] Native player handoff hook installed');
-    }
-
-    function markAsWatched(handoff) {
-        if (!window.core || !handoff || !handoff.hash) return;
-
-        // Parse the player hash to extract video/stream info
-        // Hash format: #/player/...
-        var hash = handoff.hash;
-
-        try {
-            // Get current library state and find the item
-            window.core.getState('player').then(function(playerState) {
-                if (!playerState) return;
-
-                // Try to get meta info from player state
-                var metaId = null;
-                var videoId = null;
-                try {
-                    if (playerState.metaItem) metaId = playerState.metaItem.id;
-                    if (playerState.video) videoId = playerState.video.id;
-                } catch(e) {}
-
-                // Estimate progress: if we know duration, mark 90% watched
-                var duration = handoff.duration || 0;
-                var estimatedTime = duration > 0 ? duration * 0.9 : 0;
-
-                if (duration > 0) {
-                    // Dispatch time update to mark progress
-                    try {
-                        window.core.dispatch({
-                            action: 'Player',
-                            args: { action: 'SetProp', args: { propName: 'currentTime', propValue: estimatedTime } }
-                        }, 'player');
-                        console.log('[watched] Set estimated progress to', Math.round(estimatedTime), 's of', Math.round(duration), 's');
-                    } catch(e) {}
-                }
-
-                // Also try to push to library as watched
-                if (metaId) {
-                    try {
-                        window.core.dispatch({
-                            action: 'Ctx',
-                            args: { action: 'MarkAsWatched', args: { id: metaId, videoId: videoId, isWatched: true } }
-                        }, 'ctx');
-                        console.log('[watched] Marked as watched:', metaId, videoId);
-                    } catch(e) {
-                        console.log('[watched] MarkAsWatched dispatch failed:', e.message);
-                    }
-                }
-            }).catch(function(e) {
-                console.log('[watched] Failed to get player state:', e.message);
-            });
-        } catch(e) {}
-
-        try { localStorage.removeItem(HANDOFF_KEY); } catch(e) {}
-    }
-
-    // Install hook with retry (native player patch may load after us)
-    var hookInterval = setInterval(function() {
-        if (window.__launchNativePlayer) {
-            installHook();
-            clearInterval(hookInterval);
-        }
-    }, 500);
-    setTimeout(function() { clearInterval(hookInterval); }, 30000);
-})();
+// #12 / #13 — title passing + mark-as-watched on handoff
+// ───────────────────────────────────────────────────────────────────────
+// REMOVED. These were two separate IIFEs that each redefined
+// window.__launchNativePlayer (one via setInterval+setTimeout to add a title,
+// one to wrap it for mark-as-watched). Together with the original they formed a
+// three-way race that clobbered each other nondeterministically — and the
+// watched wrapper wrote a FAKE 90% progress point (currentTime = duration*0.9)
+// on every handoff, corrupting the resume position even when the native player
+// never opened.
+//
+// Both concerns are now folded into the single consolidated launcher above:
+//   • title scraping (getPlayerTitle + the detail-page title cache)
+//   • mark-as-watched, but ONLY on a VERIFIED handoff and ONLY when the user
+//     has enabled the toggle, and WITHOUT ever writing a fake progress point.
+// Nothing to install here — kept as a documented tombstone so the patch order
+// stays clear.
 </script>
 <script>
 // #14 — Full subtitle filenames in picker
@@ -4275,8 +4353,23 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
         if (hasNative) {
             var nativeBtn = mkBtn('Native Player', '#7b5bf5');
             nativeBtn.onclick = function() {
-                toast.remove();
-                if (window.__launchNativePlayer) window.__launchNativePlayer();
+                if (!window.__launchNativePlayer) { toast.remove(); return; }
+                // H5: keep the toast until we know whether the native player
+                // actually opened. On failure, resume browser playback + advise.
+                nativeBtn.textContent = 'Trying…';
+                nativeBtn.disabled = true;
+                var v = (typeof video !== 'undefined' && video) ? video : document.querySelector('video');
+                var src = v ? v.currentSrc || v.src : null;
+                Promise.resolve(window.__launchNativePlayer(src)).then(function(opened) {
+                    if (opened) {
+                        toast.remove();
+                    } else {
+                        toast.remove();
+                        if (typeof window.__recoverAfterFailedHandoff === 'function') {
+                            window.__recoverAfterFailedHandoff(v);
+                        }
+                    }
+                });
             };
             row.appendChild(nativeBtn);
         }
@@ -4715,12 +4808,29 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
                 var allOn = localStorage.getItem('stremio_auto_native_player') === 'true';
                 var mkvOn = localStorage.getItem('stremio_auto_native_player_mkv') === 'true';
                 if (!allOn && !mkvOn) {
-                    console.log('[early-stall] stream is stalling; user has no auto-native toggle on — showing recovery toast instead of silent handoff');
+                    console.log('[early-stall] stream is stalling; user has no auto-native toggle on — no silent handoff');
+                    // No auto-handoff path available. If the honest-stall advice
+                    // is enabled and there is no real escape (no server), surface
+                    // the truthful, dismissible note. Never block/skip the stream.
+                    var srvUrlE = window.__STREMIO_SERVER_URL__ || '';
+                    var noServer = !srvUrlE || srvUrlE === 'http://127.0.0.1:11470';
+                    if (noServer && typeof window.__honestStallEnabled === 'function' && window.__honestStallEnabled()
+                        && typeof window.__showHonestStallMessage === 'function') {
+                        window.__showHonestStallMessage();
+                    }
                     return;
                 }
                 console.log('[early-stall] 2+ early stalls, handing off to native player');
                 try { video.pause(); } catch(e) {}
-                window.__launchNativePlayer(video.currentSrc || video.src);
+                // H5: act on the VERIFIED result. The launcher resolves a boolean
+                // reflecting whether the native app actually foregrounded. On
+                // failure we MUST un-pause the browser video (best-effort resume)
+                // and surface honest advice — never leave a frozen, paused player.
+                Promise.resolve(window.__launchNativePlayer(video.currentSrc || video.src)).then(function(opened) {
+                    if (!opened && typeof window.__recoverAfterFailedHandoff === 'function') {
+                        window.__recoverAfterFailedHandoff(video);
+                    }
+                });
             }
         }
         video.addEventListener('waiting', onStall);
@@ -4923,7 +5033,20 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
 
         // Pause the browser player to free the decoder before we launch the native one.
         try { video.pause(); } catch(e) {}
-        if (window.__launchNativePlayer) window.__launchNativePlayer(src);
+        if (window.__launchNativePlayer) {
+            // H5: act on the verified result. If the native player did not
+            // actually open, un-pause and resume browser playback so we never
+            // leave the user with a silently-frozen paused video. Also allow
+            // re-attempt on the next src by clearing lastHandedOffUrl.
+            Promise.resolve(window.__launchNativePlayer(src)).then(function(opened) {
+                if (!opened) {
+                    lastHandedOffUrl = '';
+                    if (typeof window.__recoverAfterFailedHandoff === 'function') {
+                        window.__recoverAfterFailedHandoff(video);
+                    }
+                }
+            });
+        }
     }, 1500);
 
     var reg = setInterval(function() {
@@ -4968,6 +5091,272 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
     // check window.__QUIET_PLAYER_ACTIVE__ at the top of their callbacks
     // going forward when we add new ones.
     void _origSetInterval;
+})();
+</script>
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+// Honest stall messaging — replaces the old lies with the truth.
+// ═══════════════════════════════════════════════════════════════════════
+// Shown when a stream is clearly stalling and NO working escape exists
+// (native handoff failed AND no streaming server). Deliberately NON-blocking
+// and dismissible: a fullscreen overlay that traps the remote is a known
+// projector regression, so this is a small corner card with a focusable button.
+// We NEVER auto-skip or block the stream (project rule: never silently block).
+// Toggleable; OFF by default to avoid surprising users who recover on their own.
+(function() {
+    'use strict';
+    var LS_KEY = 'stremio_honest_stall_msg';
+    var lastShownAt = 0;
+
+    function enabled() {
+        try { return localStorage.getItem(LS_KEY) === 'true'; } catch(e) { return false; }
+    }
+    function serverReady() {
+        var u = window.__STREMIO_SERVER_URL__ || '';
+        return !!(u && u !== 'http://127.0.0.1:11470');
+    }
+
+    window.__showHonestStallMessage = function() {
+        if (document.getElementById('dv-honest-stall')) return;
+        var now = Date.now();
+        if (now - lastShownAt < 15000) return; // throttle
+        lastShownAt = now;
+
+        var card = document.createElement('div');
+        card.id = 'dv-honest-stall';
+        // Corner card — explicitly NOT fullscreen, never traps the remote.
+        card.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);max-width:520px;width:auto;background:rgba(20,20,20,0.96);color:#fff;padding:16px 20px;border-radius:12px;font-family:PlusJakartaSans,sans-serif;z-index:99999;display:flex;flex-direction:column;gap:10px;text-align:center;line-height:1.45;box-shadow:0 8px 30px rgba(0,0,0,0.5);';
+
+        var msg = document.createElement('div');
+        msg.style.cssText = 'font-size:14px;color:rgba(255,255,255,0.92);';
+        msg.textContent = 'This 4K stream is too heavy for the TV’s built-in browser. Try a 1080p or MP4 version of this title'
+            + (serverReady() ? ', or use your Stremio streaming server to transcode it.' : ', or set up a Stremio streaming server (Settings ▸ Server).');
+        card.appendChild(msg);
+
+        var btn = document.createElement('button');
+        btn.textContent = 'Got it';
+        btn.style.cssText = 'background:rgba(255,255,255,0.16);color:#fff;border:none;border-radius:8px;padding:7px 18px;font-size:13px;font-family:inherit;font-weight:600;cursor:pointer;align-self:center;';
+        btn.setAttribute('tabindex', '0');
+        btn.onfocus = function() { this.style.outline = '2px solid #fff'; };
+        btn.onblur = function() { this.style.outline = 'none'; };
+        btn.onclick = function() { card.remove(); };
+        card.appendChild(btn);
+
+        document.body.appendChild(card);
+        setTimeout(function() { btn.focus(); }, 60);
+        setTimeout(function() { if (card.parentNode) card.remove(); }, 14000);
+    };
+
+    // Toggleable per project convention.
+    var reg = setInterval(function() {
+        if (!window.__registerVidaaSettingsItem) return;
+        clearInterval(reg);
+        window.__registerVidaaSettingsItem({
+            id: 'honest-stall-message-toggle',
+            type: 'toggle',
+            label: 'Honest Stall Advice',
+            description: 'When a stream keeps stalling and there is no working fallback (the TV player won’t open and no streaming server is set), show a small, dismissible note explaining the real cause and what actually helps (a lighter source, or a streaming server). Never blocks or skips the stream. OFF by default.',
+            lsKey: LS_KEY,
+            defaultValue: false
+        });
+    }, 200);
+
+    // Expose the gate so other code can decide whether to call us.
+    window.__honestStallEnabled = enabled;
+})();
+</script>
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+// VIDAA Diagnostic — one-tap, screenshot-friendly device/feature report.
+// ═══════════════════════════════════════════════════════════════════════
+// The TV has no clipboard, so users photograph this panel. It surfaces the
+// facts needed to diagnose buffering / native-handoff issues PER DEVICE:
+//   • device model / firmware / chipset (Hisense_* APIs, safe fallbacks)
+//   • whether omi_platform AND omi_platform.sendPlatformMessage actually exist
+//     on THIS device — the key datum that proves/disproves the native handoff
+//   • whether the configured streaming server is reachable (short-timeout fetch)
+//   • failing stream container/codec/resolution/bitrate (window.__STREAM_INFO__)
+//   • which buffering-related toggles are currently ON
+//
+// Reachable two ways (projector remotes have NO number keys — color keys only):
+//   • Settings ▸ VIDAA item ("Run Diagnostic")
+//   • In-player combo: Green (404) then Red (403) within 1.5s. This combo does
+//     not collide with the single-press bindings (Yellow=405 native,
+//     Blue=406 transcode, Red/Info=stream info, Green=server health) because it
+//     requires the two-key sequence Green→Red specifically.
+(function() {
+    'use strict';
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"]/g, function(c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+        });
+    }
+
+    function safeCall(fn) {
+        try {
+            if (typeof fn === 'function') {
+                var v = fn();
+                return (v === undefined || v === null || v === '') ? null : v;
+            }
+        } catch(e) {}
+        return null;
+    }
+
+    function getDeviceInfo() {
+        var H = window.Hisense_GetModelName ? window : (window.parent || window);
+        function pick(name) {
+            try { return safeCall(window[name]) || safeCall(H[name]); } catch(e) { return null; }
+        }
+        return {
+            model: pick('Hisense_GetModelName') || (window.__VIDAA_CAPS__ && window.__VIDAA_CAPS__.model) || 'unknown',
+            firmware: pick('Hisense_GetFirmWareVersion') || pick('Hisense_GetFirmwareVersion') || 'unknown',
+            chipset: pick('Hisense_GetChipSetName') || pick('Hisense_GetChipsetName') || (window.__VIDAA_CAPS__ && window.__VIDAA_CAPS__.chipset) || 'unknown'
+        };
+    }
+
+    function nativeApiStatus() {
+        var omiExists = false, sendExists = false;
+        try { omiExists = (typeof omi_platform !== 'undefined') && !!omi_platform; } catch(e) {}
+        try { sendExists = omiExists && typeof omi_platform.sendPlatformMessage === 'function'; } catch(e) {}
+        return { omiExists: omiExists, sendExists: sendExists };
+    }
+
+    function activeToggles() {
+        var keys = {
+            'Auto Native (MKV)': 'stremio_auto_native_player_mkv',
+            'Auto Native (all)': 'stremio_auto_native_player',
+            'Mark Watched on Handoff': 'stremio_native_handoff',
+            'Playback Warning': 'stremio_playback_warning',
+            'Honest Stall Advice': 'stremio_honest_stall_msg',
+            'Force Stereo': 'stremio_force_stereo'
+        };
+        var on = [];
+        for (var label in keys) {
+            try { if (localStorage.getItem(keys[label]) === 'true') on.push(label); } catch(e) {}
+        }
+        return on.length ? on.join(', ') : 'none';
+    }
+
+    function checkServer(cb) {
+        var url = window.__STREMIO_SERVER_URL__ || '';
+        if (!url) { cb({ url: '(none configured)', reachable: false, note: 'no URL' }); return; }
+        var done = false;
+        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var t = setTimeout(function() { if (ctrl) { try { ctrl.abort(); } catch(e) {} } if (!done) { done = true; cb({ url: url, reachable: false, note: 'timed out' }); } }, 2500);
+        try {
+            fetch(url + '/settings', ctrl ? { signal: ctrl.signal } : undefined)
+                .then(function(r) { return r.ok ? r.json().catch(function() { return {}; }) : Promise.reject(new Error('HTTP ' + r.status)); })
+                .then(function(data) { if (done) return; done = true; clearTimeout(t); cb({ url: url, reachable: true, note: (data && (data.serverVersion || data.version)) ? ('v' + (data.serverVersion || data.version)) : 'online' }); })
+                .catch(function(e) { if (done) return; done = true; clearTimeout(t); cb({ url: url, reachable: false, note: (e && e.message) || 'unreachable' }); });
+        } catch(e) {
+            if (!done) { done = true; clearTimeout(t); cb({ url: url, reachable: false, note: 'fetch error' }); }
+        }
+    }
+
+    window.__showVidaaDiagnostic = function() {
+        var existing = document.getElementById('vidaa-diagnostic');
+        if (existing) { existing.remove(); return; }
+
+        var dev = getDeviceInfo();
+        var api = nativeApiStatus();
+        var si = window.__STREAM_INFO__ || {};
+        var container = si.container || (function() {
+            try {
+                var v = document.querySelector('video');
+                var src = v ? (v.currentSrc || v.src || '') : '';
+                var p = src.split('?')[0].toLowerCase();
+                var m = p.match(/\.(mkv|mp4|m4v|webm|m3u8|mpd|mov)$/);
+                return m ? m[1] : 'unknown';
+            } catch(e) { return 'unknown'; }
+        })();
+        var res = (si.width || '?') + 'x' + (si.height || '?');
+        var bitrate = si.bitrate ? (Math.round(si.bitrate / 1000) + ' kbps') : 'unknown';
+
+        var panel = document.createElement('div');
+        panel.id = 'vidaa-diagnostic';
+        // BIG, centered, high-contrast — screenshot-friendly. Scrollable, not a
+        // remote-trapping modal: the close button is the first focusable element.
+        panel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(720px,92vw);max-height:88vh;overflow:auto;background:#0c0c12;color:#fff;padding:28px 32px;border-radius:16px;font-family:PlusJakartaSans,monospace;z-index:100001;box-shadow:0 12px 50px rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.08);';
+
+        function row(label, value, color) {
+            return '<div style="display:flex;justify-content:space-between;gap:18px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:17px;">'
+                + '<span style="color:rgba(255,255,255,0.55);">' + esc(label) + '</span>'
+                + '<span style="font-weight:700;color:' + (color || '#fff') + ';text-align:right;word-break:break-all;">' + esc(value) + '</span></div>';
+        }
+
+        var handoffColor = api.sendExists ? '#4ade80' : '#f87171';
+        var html = '<div style="font-size:24px;font-weight:800;margin-bottom:6px;">VIDAA Diagnostic</div>'
+            + '<div style="font-size:13px;color:rgba(255,255,255,0.45);margin-bottom:18px;">Photograph this screen to share when reporting a buffering issue.</div>'
+            + '<div style="font-size:13px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin:14px 0 4px;">Device</div>'
+            + row('Model', dev.model)
+            + row('Firmware', dev.firmware)
+            + row('Chipset', dev.chipset)
+            + '<div style="font-size:13px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin:14px 0 4px;">Native player handoff</div>'
+            + row('omi_platform present', api.omiExists ? 'YES' : 'NO', api.omiExists ? '#4ade80' : '#f87171')
+            + row('sendPlatformMessage', api.sendExists ? 'YES (bridge present)' : 'NO', handoffColor)
+            + '<div style="font-size:12px;color:rgba(255,255,255,0.45);padding:6px 0;line-height:1.4;">Note: even when the bridge is present, no confirmed VIDAA firmware acts on the play-video messages — the handoff is verified only by the browser actually backgrounding.</div>'
+            + '<div style="font-size:13px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin:14px 0 4px;">Streaming server</div>'
+            + '<div id="vidaa-diag-server">' + row('Server', 'checking…', '#fbbf24') + '</div>'
+            + '<div style="font-size:13px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin:14px 0 4px;">Failing stream</div>'
+            + row('Container', container)
+            + row('Codec', si.videoCodec || 'unknown')
+            + row('Resolution', res)
+            + row('Bitrate', bitrate)
+            + '<div style="font-size:13px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin:14px 0 4px;">Buffering toggles ON</div>'
+            + row('Active', activeToggles());
+
+        panel.innerHTML = html;
+
+        var closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Close';
+        closeBtn.style.cssText = 'margin-top:20px;width:100%;background:#7b5bf5;color:#fff;border:none;border-radius:10px;padding:12px;font-size:16px;font-family:inherit;font-weight:700;cursor:pointer;';
+        closeBtn.setAttribute('tabindex', '0');
+        closeBtn.onfocus = function() { this.style.outline = '3px solid #a78bfa'; };
+        closeBtn.onblur = function() { this.style.outline = 'none'; };
+        closeBtn.onclick = function() { panel.remove(); };
+        // Insert close button as the FIRST child so spatial nav lands on it,
+        // but visually keep it at the bottom via appendChild ordering.
+        panel.appendChild(closeBtn);
+
+        document.body.appendChild(panel);
+        setTimeout(function() { closeBtn.focus(); }, 60);
+
+        // Async server reachability — update the placeholder when it resolves.
+        checkServer(function(s) {
+            var slot = document.getElementById('vidaa-diag-server');
+            if (!slot) return;
+            slot.innerHTML = row('URL', s.url)
+                + row('Reachable', s.reachable ? 'YES' : 'NO', s.reachable ? '#4ade80' : '#f87171')
+                + row('Status', s.note, s.reachable ? '#4ade80' : '#f87171');
+        });
+    };
+
+    // In-player color-button combo: Green (404) then Red (403) within 1.5s.
+    var greenAt = 0;
+    document.addEventListener('keydown', function(e) {
+        if (e.keyCode === 404) { greenAt = Date.now(); return; }
+        if (e.keyCode === 403) {
+            if (greenAt && (Date.now() - greenAt) < 1500) {
+                greenAt = 0;
+                window.__showVidaaDiagnostic();
+            }
+        }
+    }, true); // capture phase so we see it before the single-press handlers act
+
+    // Settings ▸ VIDAA launchable item.
+    var reg = setInterval(function() {
+        if (!window.__registerVidaaSettingsItem) return;
+        clearInterval(reg);
+        window.__registerVidaaSettingsItem({
+            id: 'vidaa-diagnostic-item',
+            type: 'button',
+            label: 'Run VIDAA Diagnostic',
+            description: 'Shows a big, screenshot-friendly panel with your TV model/firmware/chipset, whether the native-player bridge exists on this device, whether your streaming server is reachable, and the failing stream’s details. In the player you can also press Green then Red. Photograph it to report buffering issues.',
+            onClick: function() { window.__showVidaaDiagnostic(); },
+            onToggle: function() { window.__showVidaaDiagnostic(); }
+        });
+    }, 200);
 })();
 </script>
 
