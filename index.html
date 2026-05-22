@@ -367,7 +367,6 @@
                 // M2: do NOT remove the overlay until we KNOW the handoff worked.
                 // The launcher resolves a verified boolean; only on success do we
                 // clear the stall flag + dismiss. On failure the recovery UI stays.
-                var prev = nativeBtn.textContent;
                 nativeBtn.textContent = 'Trying…';
                 nativeBtn.disabled = true;
                 Promise.resolve(window.__launchNativePlayer(streamUrl)).then(function(opened) {
@@ -5361,10 +5360,14 @@ console.log('[community] All 5 community features loaded (#17-#21). Enable in Se
         if (e.keyCode === 403) {
             if (greenAt && (Date.now() - greenAt) < 1500) {
                 greenAt = 0;
+                // Combo fired: suppress the single-press Red handler (quality
+                // indicator) so we don't pop an overlay underneath the diagnostic.
+                e.stopImmediatePropagation();
+                e.preventDefault();
                 window.__showVidaaDiagnostic();
             }
         }
-    }, true); // capture phase so we see it before the single-press handlers act
+    }, true); // capture phase so we intercept before the single-press handlers act
 
     // Settings ▸ VIDAA launchable item.
     var reg = setInterval(function() {
