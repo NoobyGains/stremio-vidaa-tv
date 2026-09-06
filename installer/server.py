@@ -277,7 +277,7 @@ def forward_dns_query(data):
 
 
 def dns_server(local_ip):
-    """Run a UDP DNS server that spoofs only vidaahub.com and forwards the rest."""
+    """Run a UDP DNS server that spoofs vidaahub.com and its subdomains, forwarding the rest."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
@@ -298,14 +298,18 @@ def dns_server(local_ip):
             domain, qtype = parse_dns_question(data)
             response = None
 
-            if domain == SPOOF_DOMAIN and qtype == 1:
+            is_spoofed = domain == SPOOF_DOMAIN or (
+                domain is not None and domain.endswith("." + SPOOF_DOMAIN)
+            )
+
+            if is_spoofed and qtype == 1:
                 response = build_dns_response(data, local_ip)
                 if response:
                     sock.sendto(response, addr)
                     print("[DNS]   " + addr[0] + " queried " + domain + " -> " + local_ip + " (spoofed)")
                 continue
 
-            if domain == SPOOF_DOMAIN and qtype == 28:
+            if is_spoofed and qtype == 28:
                 response = build_empty_dns_response(data)
                 if response:
                     sock.sendto(response, addr)
@@ -411,7 +415,7 @@ def main():
     print("[INIT]  Certificate ready")
     print("")
     upstream_hosts = ", ".join([host for host, _ in UPSTREAM_DNS_SERVERS])
-    print("[INIT]  Spoofing only " + SPOOF_DOMAIN + " and forwarding all other DNS queries upstream")
+    print("[INIT]  Spoofing " + SPOOF_DOMAIN + " and its subdomains, forwarding all other DNS queries upstream")
     print("[INIT]  Upstream DNS servers: " + upstream_hosts)
     print("")
 
